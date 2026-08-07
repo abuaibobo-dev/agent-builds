@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 背景圆 -->
+    <path
+        android:fillColor="#1A73E8"
+        android:pathData="M54,54m-48,0a48,48 0,1 1,96 0a48,48 0,1 1,-96 0" />
+    <!-- 外圈渐变环 -->
+    <path
+        android:fillColor="#4285F4"
+        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+    <!-- 内圈 -->
+    <path
+        android:fillColor="#1A73E8"
+        android:pathData="M54,54m-36,0a36,36 0,1 1,72 0a36,36 0,1 1,-72 0" />
+    <!-- 字母 B - 竖线 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,38h4v32h-4z" />
+    <!-- 字母 B - 上半圆 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,38h12a8,8 0,0 1,8 8v0a8,8 0,0 1,-8 8h-12z" />
+    <!-- 字母 B - 下半圆 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,54h14a8,8 0,0 1,8 8v0a8,8 0,0 1,-8 8h-14z" />
+    <!-- 转发箭头 -->
+    <path
+        android:fillColor="#8AB4F8"
+        android:pathData="M66,62l6,-6l-6,-6v4h-10v4h10z" />
+    <path
+        android:fillColor="#8AB4F8"
+        android:pathData="M54,70a10,10 0,0 1,-8 -4l3,-3a6,6 0,0 0,5 3z" />
+</vector>

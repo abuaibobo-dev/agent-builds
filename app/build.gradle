@@ -1,0 +1,24 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.bcollector.app"
+    compileSdk 34
+
+    packagingOptions {
+        doNotStrip "**/*.so"
+    }
+
+    defaultConfig {
+        applicationId "com.bcollector.app"
+        minSdk 23
+        targetSdk 34
+        versionCode 29
+        versionName "1.0.29"
+    }
+}
+
+dependencies {
+    implementation "net.java.dev.jna:jna:5.14.0@aar"
+}
