@@ -55,6 +55,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPolish: Button
     private lateinit var btnSave: Button
     private lateinit var btnUpscale: Button
+    private lateinit var etBatchTheme: EditText
+    private lateinit var btnBatchStart: Button
+    private lateinit var btnBatchStop: Button
+    private lateinit var tvBatchStatus: TextView
+    private lateinit var llRate: LinearLayout
     private lateinit var btnRandom: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
@@ -82,6 +87,15 @@ class MainActivity : AppCompatActivity() {
     private val generating = AtomicBoolean(false)
     private val polishing = AtomicBoolean(false)
     private val upscaling = AtomicBoolean(false)
+    private val batchRunning = AtomicBoolean(false)
+    @Volatile
+    private var batchStopRequested = false
+    private var batchRateDelay = 5000L
+    private val batchPool = mutableListOf<String>()
+    private var batchDoneCount = 0
+    private var batchTheme = ""
+    private val cooldowns = mutableMapOf<Provider, Long>()
+    private lateinit var batchStateFile: File
 
     private var selectedRatio = 0
     private var selectedStyle = 0
@@ -148,6 +162,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         worksDir = File(filesDir, "works").apply { mkdirs() }
+        batchStateFile = File(filesDir, "batch_state.json")
 
         bottomNav = findViewById(R.id.bottomNav)
         tabGenerate = findViewById(R.id.tab_generate)
@@ -160,6 +175,11 @@ class MainActivity : AppCompatActivity() {
         btnPolish = findViewById(R.id.btnPolish)
         btnSave = findViewById(R.id.btnSave)
         btnUpscale = findViewById(R.id.btnUpscale)
+        etBatchTheme = findViewById(R.id.etBatchTheme)
+        btnBatchStart = findViewById(R.id.btnBatchStart)
+        btnBatchStop = findViewById(R.id.btnBatchStop)
+        tvBatchStatus = findViewById(R.id.tvBatchStatus)
+        llRate = findViewById(R.id.llRate)
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)
@@ -291,6 +311,24 @@ class MainActivity : AppCompatActivity() {
             upscale4k(bmp, isImg = true)
         }
 
+        buildChips(llRate, listOf("慢", "中", "快")) { idx ->
+            batchRateDelay = when (idx) { 0 -> 15000L; 1 -> 5000L; 2 -> 1500L; else -> 5000L }
+            setChipDefault(llRate, idx)
+        }
+        setChipDefault(llRate, 1)
+
+        btnBatchStart.setOnClickListener {
+            if (batchRunning.get()) return@setOnClickListener
+            startBatch()
+        }
+
+        btnBatchStop.setOnClickListener {
+            if (batchRunning.get()) {
+                batchStopRequested = true
+                tvBatchStatus.text = "停止中：完成当前这张后保存…"
+            }
+        }
+
         btnSave.setOnClickListener {
             saveBitmapToGallery(currentBitmap)
         }
@@ -336,6 +374,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setChipDefault(container: LinearLayout, index: Int) {
+        for (i in 0 until container.childCount) {
+            val chip = container.getChildAt(i) as Button
+            chip.setBackgroundResource(if (i == index) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+            chip.setTextColor(if (i == index) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
+        }
+    }
+
     private fun renderChipSelection() {
         val ratioChips = findViewById<LinearLayout>(R.id.llRatio)
         for (i in 0 until ratioChips.childCount) {
@@ -348,6 +394,211 @@ class MainActivity : AppCompatActivity() {
             val chip = styleChips.getChildAt(i) as Button
             chip.setBackgroundResource(if (i == selectedStyle) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
             chip.setTextColor(if (i == selectedStyle) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
+        }
+    }
+
+    private fun startBatch() {
+        val theme = etBatchTheme.text.toString().trim()
+        if (theme.isEmpty()) {
+            Toast.makeText(this, "先输入主题方向", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val saved = loadBatchState()
+        if (saved != null && saved.optInt("done", 0) > 0) {
+            val msg = "上次任务「${saved.optString("theme")}」已完成 ${saved.optInt("done")} 张，未结束。"
+            android.app.AlertDialog.Builder(this)
+                .setTitle("发现未完成任务")
+                .setMessage("$msg\n\n继续跑，还是开新批次？")
+                .setPositiveButton("继续") { _, _ -> beginBatch(saved, theme) }
+                .setNegativeButton("开新批次") { _, _ -> beginBatch(null, theme) }
+                .setNeutralButton("取消", null)
+                .show()
+        } else {
+            beginBatch(saved, theme)
+        }
+    }
+
+    private fun beginBatch(previous: JSONObject?, theme: String) {
+        if (previous != null) {
+            batchTheme = previous.optString("theme")
+            batchDoneCount = previous.optInt("done", 0)
+            batchPool.clear()
+            val arr = previous.optJSONArray("pool")
+            if (arr != null) for (i in 0 until arr.length()) batchPool.add(arr.optString(i))
+        } else {
+            batchTheme = theme
+            batchDoneCount = 0
+            batchPool.clear()
+        }
+        batchStopRequested = false
+        cooldowns.clear()
+        batchRunning.set(true)
+        btnBatchStart.isEnabled = false
+        btnBatchStop.isEnabled = true
+        btnGenerate.isEnabled = false
+        btnPolish.isEnabled = false
+        btnRandom.isEnabled = false
+        btnVariation.isEnabled = false
+        tvBatchStatus.text = "启动批量：$batchTheme"
+        thread { batchWorker() }
+    }
+
+    private fun batchWorker() {
+        while (!batchStopRequested) {
+            try {
+                if (batchPool.isEmpty()) {
+                    runOnUiThread { tvBatchStatus.text = "裂变新创意中…" }
+                    topUpPool()
+                    persistBatch()
+                    if (batchPool.isEmpty()) {
+                        runOnUiThread { tvBatchStatus.text = "创意源不可用，已暂停；点“停止”结束" }
+                        break
+                    }
+                }
+                val idea = batchPool.removeAt(0)
+                val bitmap = generateBatchImage(idea)
+                if (bitmap != null) {
+                    batchDoneCount++
+                    runOnUiThread {
+                        tvBatchStatus.text = "已完成 $batchDoneCount 张 · 池内 ${batchPool.size} · “$idea”"
+                        ivResult.setImageBitmap(bitmap)
+                    }
+                    persistBatch()
+                } else {
+                    persistBatch()
+                }
+                if (batchStopRequested) break
+                Thread.sleep(batchRateDelay)
+                if (batchStopRequested) break
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Thread.sleep(2000)
+            }
+        }
+        batchRunning.set(false)
+        persistBatch(false)
+        runOnUiThread {
+            btnBatchStart.isEnabled = true
+            btnBatchStop.isEnabled = false
+            btnGenerate.isEnabled = true
+            btnPolish.isEnabled = true
+            btnRandom.isEnabled = true
+            btnVariation.isEnabled = true
+            tvBatchStatus.text = "已停止 · 本批共 $batchDoneCount 张"
+            loadGallery()
+        }
+    }
+
+    private fun topUpPool() {
+        val fresh = batchCreateIdeas(batchTheme, 8)
+        for (t in fresh) {
+            if (t.isNotBlank()) batchPool.add(t)
+        }
+        if (batchPool.size > 24) {
+            while (batchPool.size > 24) batchPool.removeAt(batchPool.size - 1)
+        }
+    }
+
+    private fun generateBatchImage(idea: String): Bitmap? {
+        val (_, w, h) = ratios[selectedRatio]
+        val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
+        for (p in providers) {
+            val until = cooldowns[p]
+            if (until != null && until > System.currentTimeMillis()) continue
+            runOnUiThread { tvBatchStatus.text = "${p.loadingText} · 池内 ${batchPool.size + 1}" }
+            val bmp = try {
+                when (p) {
+                    Provider.AGNES -> generateWithAgnes(idea, w, h, null)
+                    Provider.HFFLUX -> generateWithHfFlux(idea, w, h)
+                    Provider.POLLINATIONS -> generateWithPollinations(idea, w, h)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+            if (bmp != null) {
+                cooldowns.remove(p)
+                currentBitmap = bmp
+                runOnUiThread { btnSave.isEnabled = true }
+                saveRecord(bmp, idea, idea)
+                return bmp
+            }
+            cooldowns[p] = System.currentTimeMillis() + when (p) {
+                Provider.AGNES -> 30_000L
+                Provider.HFFLUX -> 60_000L
+                Provider.POLLINATIONS -> 25_000L
+            }
+            runOnUiThread { tvBatchStatus.text = "${p.label} 暂不可用，换源…" }
+        }
+        return null
+    }
+
+    private fun batchCreateIdeas(theme: String, n: Int): List<String> {
+        val inlineFallback = listOf(
+            "$theme，清晨薄雾中的近景",
+            "$theme，深夜霓虹灯下的剪影",
+            "$theme，俯瞰大场景",
+            "$theme，细节微距特写",
+            "$theme，雨后的倒影画面",
+            "$theme，冬季雪景",
+            "$theme，阳光正午的高对比",
+            "$theme，艺术化极简构图"
+        )
+        return try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(90, TimeUnit.SECONDS)
+                .build()
+            val body = JSONObject()
+                .put("model", "agnes-2.0-flash")
+                .put("messages", JSONArray().apply {
+                    put(JSONObject().put("role", "user").put("content",
+                        "你是插画创意总监。围绕主题「$theme」创作 $n 个彼此差异明显的英文绘图描述，每次换构图、元素或氛围，避免重复。只输出描述，每行一个，不要编号、不要额外文字。"))
+                })
+                .put("max_tokens", 1800)
+            val req = Request.Builder()
+                .url("https://api.agilestudio.cn/v1/chat/completions")
+                .header("Authorization", "Bearer ${BuildConfig.AGNES_API_KEY}")
+                .header("Content-Type", "application/json")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            val resp = client.newCall(req).execute()
+            val raw = resp.body?.string()
+            resp.close()
+            val lines = raw?.let { r ->
+                JSONObject(r).optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("message")?.optString("content", "") ?: ""
+            }?.split("\n")?.map { it.trim() }?.filter { it.length > 12 }
+            val list = lines?.take(n).orEmpty()
+            if (list.size >= 4) list else inlineFallback
+        } catch (e: Exception) {
+            e.printStackTrace()
+            inlineFallback
+        }
+    }
+
+    private fun persistBatch(running: Boolean = batchRunning.get()) {
+        try {
+            val obj = JSONObject().apply {
+                put("theme", batchTheme)
+                put("done", batchDoneCount)
+                put("running", running)
+                val arr = JSONArray()
+                for (t in batchPool) arr.put(t)
+                put("pool", arr)
+            }
+            batchStateFile.writeText(obj.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun loadBatchState(): JSONObject? {
+        if (!batchStateFile.exists()) return null
+        return try {
+            JSONObject(batchStateFile.readText())
+        } catch (e: Exception) {
+            null
         }
     }
 
