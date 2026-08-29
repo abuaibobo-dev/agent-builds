@@ -50,4 +50,14 @@ dependencies {
 
     // 网络请求库 OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // CameraX 参考图拍摄
+    val camerax = "1.3.4"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
+
+    // LeakCanary 内存泄漏检测
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 }

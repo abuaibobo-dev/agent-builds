@@ -154,6 +154,13 @@ class MainActivity : AppCompatActivity() {
         if (uri != null) uploadRefImage(uri) else Toast.makeText(this, "未选择图片", Toast.LENGTH_SHORT).show()
     }
 
+    private val takePhoto = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uriStr = result.data?.getStringExtra("uri")
+        if (result.resultCode == RESULT_OK && uriStr != null) {
+            uploadRefImage(Uri.parse(uriStr))
+        }
+    }
+
     private enum class Provider(val label: String, val loadingText: String) {
         AGNES("Agnes", "Agnes 高速引擎生成中..."),
         HFFLUX("FLUX 免费源", "FLUX 免费引擎接力生成中..."),
@@ -270,6 +277,11 @@ class MainActivity : AppCompatActivity() {
         btnRef.setOnClickListener {
             if (generating.get()) return@setOnClickListener
             pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+
+        findViewById<Button>(R.id.btnCamera).setOnClickListener {
+            if (generating.get()) return@setOnClickListener
+            takePhoto.launch(Intent(this, TakePhotoActivity::class.java))
         }
 
         tvImgRefClear.setOnClickListener {

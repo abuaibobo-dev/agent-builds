@@ -391,6 +391,17 @@
                     android:textSize="15sp"
                     android:stateListAnimator="@null"/>
 
+                <Button
+                    android:id="@+id/btnCamera"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:text="拍一张（当参考图）"
+                    android:textColor="@color/text_primary"
+                    android:background="@drawable/bg_btn_outline"
+                    android:textSize="15sp"
+                    android:stateListAnimator="@null"/>
+
                 <FrameLayout
                     android:id="@+id/frameImgRefThumb"
                     android:layout_width="112dp"
