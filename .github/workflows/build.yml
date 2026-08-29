@@ -38,8 +38,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: waterfall-gallery-${{ github.run_number }}
-          name: waterfall-gallery-${{ github.run_number }}
-          body: "Waterfall gallery with fullscreen preview."
+          tag_name: local-upscaler-${{ github.run_number }}
+          name: local-upscaler-${{ github.run_number }}
+          body: "Offline TFLite ESRGAN upscaler with fullscreen image entry."
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true

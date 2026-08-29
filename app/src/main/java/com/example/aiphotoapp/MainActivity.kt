@@ -43,10 +43,6 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
-    companion object {
-        private const val UPSCALER_BASE = "https://Hockman-real-esrgan-upscaler.hf.space"
-    }
-
     private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
     private lateinit var tabGenerate: View
     private lateinit var tabImg2img: View
@@ -89,6 +85,7 @@ class MainActivity : AppCompatActivity() {
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(150, TimeUnit.SECONDS)
         .build()
+    private val localUpscaler by lazy { LocalUpscaler(this) }
     private val generating = AtomicBoolean(false)
     private val polishing = AtomicBoolean(false)
     private val upscaling = AtomicBoolean(false)
@@ -167,6 +164,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        clearButtonTints(findViewById(android.R.id.content))
 
         worksDir = File(filesDir, "works").apply { mkdirs() }
         batchStateFile = File(filesDir, "batch_state.json")
@@ -203,6 +201,8 @@ class MainActivity : AppCompatActivity() {
         btnImgSave = findViewById(R.id.btnImgSave)
         btnImgUpscale = findViewById(R.id.btnImgUpscale)
         ivImgResult = findViewById(R.id.ivImgResult)
+        ivResult.setOnClickListener { currentBitmap?.let { showBitmapDetail(it, false) } }
+        ivImgResult.setOnClickListener { imgCurrentBitmap?.let { showBitmapDetail(it, true) } }
         ivImgRefThumb = findViewById(R.id.ivImgRefThumb)
         frameImgRefThumb = findViewById(R.id.frameImgRefThumb)
         tvImgRefClear = findViewById(R.id.tvImgRefClear)
@@ -710,11 +710,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun upscale4k(source: Bitmap, isImg: Boolean) {
+    private fun upscale4k(source: Bitmap, isImg: Boolean, onDone: ((Bitmap) -> Unit)? = null) {
         if (upscaling.getAndSet(true)) return
         val status = if (isImg) tvImgStatus else tvStatus
-        if (isImg) { btnImgUpscale.isEnabled = false; btnImgSave.isEnabled = false }
-        else { btnUpscale.isEnabled = false; btnSave.isEnabled = false }
+        if (isImg) btnImgSave.isEnabled = false else btnSave.isEnabled = false
 
         thread {
             try {
@@ -723,82 +722,13 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { status.text = "图片已够大，无需放大" }
                     return@thread
                 }
-                runOnUiThread { status.text = "AI 超分放大中（x${if (maxDim <= 1200) 4 else 2}）..." }
-
-                val uploadFile = File(cacheDir, "up_${System.currentTimeMillis()}.png")
-                FileOutputStream(uploadFile).use { fo ->
-                    source.compress(Bitmap.CompressFormat.PNG, 100, fo)
-                }
-                val upBody = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("files", uploadFile.name, uploadFile.asRequestBody("image/png".toMediaType()))
-                    .build()
-                val upReq = Request.Builder().url("$UPSCALER_BASE/gradio_api/upload").post(upBody).build()
-                val upText = httpClient.newCall(upReq).execute().use { it.body?.string() }
-                val path = parseUploadedPath(upText)
-                if (path == null) {
-                    runOnUiThread { status.text = "超分上传失败，请重试" }
-                    return@thread
-                }
-
-                val scale = if (maxDim <= 1200) 4 else 2
-                val fn = if (scale == 4) "process_and_get_output_1" else "process_and_get_output"
-                val data = JSONArray()
-                    .put(JSONObject().put("path", path))
-                    .put(scale)
-                val createBody = JSONObject().put("data", data).toString()
-                val createReq = Request.Builder()
-                    .url("$UPSCALER_BASE/gradio_api/call/$fn")
-                    .post(createBody.toRequestBody("application/json".toMediaType()))
-                    .build()
-                val createResp = httpClient.newCall(createReq).execute()
-                val eventId = parseEventId(createResp.body?.string())
-                createResp.close()
-                if (eventId == null) {
-                    runOnUiThread { status.text = "超分引擎排队失败，稍后再试" }
-                    return@thread
-                }
-
-                var outUrl: String? = null
-                repeat(60) {
-                    Thread.sleep(2500)
-                    val evReq = Request.Builder()
-                        .url("$UPSCALER_BASE/gradio_api/call/$fn/$eventId")
-                        .header("Accept", "text/event-stream")
-                        .build()
-                    val evResp = httpClient.newCall(evReq).execute()
-                    val txt = evResp.body?.string() ?: ""
-                    evResp.close()
-                    if (txt.contains("event: complete")) {
-                        outUrl = parseUrl(txt)
-                        return@repeat
-                    }
-                    if (txt.contains("event: error")) {
-                        return@repeat
-                    }
-                }
-                if (outUrl == null) {
-                    runOnUiThread { status.text = "超分失败：引擎忙或超时" }
-                    return@thread
-                }
-                val fetchedUrl = outUrl ?: return@thread
-
-                val imgBytes = httpClient.newCall(Request.Builder().url(fetchedUrl).build())
-                    .execute().use { it.body?.bytes() }
-                if (imgBytes == null) {
-                    runOnUiThread { status.text = "超分结果下载失败" }
-                    return@thread
-                }
-                val upBmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size)
-                if (upBmp == null) {
-                    runOnUiThread { status.text = "超分结果解析失败" }
-                    return@thread
-                }
-                uploadFile.delete()
+                runOnUiThread { status.text = "本地 AI 超分放大中（x4）..." }
+                val upBmp = localUpscaler.upscale(source)
                 runOnUiThread {
                     if (isImg) { imgCurrentBitmap = upBmp; ivImgResult.setImageBitmap(upBmp) }
                     else { currentBitmap = upBmp; ivResult.setImageBitmap(upBmp) }
-                    status.text = "已放大：${upBmp.width}×${upBmp.height}（AI 超分）"
+                    status.text = "已放大：${upBmp.width}×${upBmp.height}（本地 AI 超分）"
+                    onDone?.invoke(upBmp)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -810,31 +740,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun parseUploadedPath(raw: String?): String? {
-        if (raw.isNullOrBlank()) return null
-        return try {
-            val arr = JSONArray(raw)
-            arr.optString(0).takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            null
+    private fun showBitmapDetail(source: Bitmap, isImg: Boolean) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 16, 16, 8)
+            setBackgroundColor(0xFF0F0F0F.toInt())
         }
-    }
-
-    private fun parseEventId(raw: String?): String? {
-        if (raw.isNullOrBlank()) return null
-        return try {
-            JSONObject(raw).optString("event_id").takeIf { it.isNotEmpty() && it != "null" }
-        } catch (e: Exception) {
-            null
+        val image = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageBitmap(source)
         }
-    }
-
-    private fun parseUrl(events: String): String? {
-        val idx = events.lastIndexOf("event: complete")
-        if (idx < 0) return null
-        val section = events.substring(idx)
-        val m = Regex("url\"\\s*:\\s*\"([^\"]+)\"").find(section)
-        return m?.groupValues?.get(1)
+        root.addView(image)
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val upscale = Button(this).apply {
+            text = "本地超分"
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+        }
+        val save = Button(this).apply {
+            text = "保存"
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+        }
+        val close = Button(this).apply {
+            text = "关闭"
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+        }
+        listOf(upscale, save, close).forEach { button ->
+            button.backgroundTintList = null
+            actions.addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        root.addView(actions)
+        val dialog = android.app.Dialog(this).apply {
+            requestWindowFeature(Window.FEATURE_NO_TITLE)
+            setContentView(root)
+            window?.setBackgroundDrawableResource(android.R.color.black)
+        }
+        upscale.setOnClickListener {
+            if (!upscaling.get()) {
+                upscale.isEnabled = false
+                upscale4k(source, isImg) {
+                    image.setImageBitmap(it)
+                    save.isEnabled = true
+                }
+            }
+        }
+        save.setOnClickListener { saveBitmapToGallery(if (isImg) imgCurrentBitmap else currentBitmap) }
+        close.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun generateImage(idea: String) {
@@ -1225,25 +1184,32 @@ class MainActivity : AppCompatActivity() {
         }
         val btnRedraw = Button(this)
         btnRedraw.text = "设为参考图重绘"
+        val btnLocalUpscale = Button(this)
+        btnLocalUpscale.text = "本地超分"
         val btnSaveG = Button(this)
         btnSaveG.text = "保存到相册"
         val btnDelete = Button(this)
         btnDelete.text = "删除"
-        listOf(btnRedraw, btnSaveG, btnDelete).forEach { b ->
+        listOf(btnRedraw, btnLocalUpscale, btnSaveG, btnDelete).forEach { b ->
             b.setTextColor(0xFFFFFFFF.toInt())
             b.setBackgroundResource(R.drawable.bg_btn_outline)
+            b.backgroundTintList = null
             b.textSize = 13f
             b.stateListAnimator = null
         }
         val l1 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         val l2 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         val l3 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        val l4 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         l2.marginStart = dp(8)
         l3.marginStart = dp(8)
+        l4.marginStart = dp(8)
         btnRedraw.layoutParams = l1
-        btnSaveG.layoutParams = l2
-        btnDelete.layoutParams = l3
+        btnLocalUpscale.layoutParams = l2
+        btnSaveG.layoutParams = l3
+        btnDelete.layoutParams = l4
         btnRow.addView(btnRedraw)
+        btnRow.addView(btnLocalUpscale)
         btnRow.addView(btnSaveG)
         btnRow.addView(btnDelete)
         view.addView(btnRow)
@@ -1259,6 +1225,15 @@ class MainActivity : AppCompatActivity() {
                 showTab(tabImg2img)
                 uploadRefImage(Uri.fromFile(file))
                 Toast.makeText(this, "已设为参考图，去“图生图”页生成", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnLocalUpscale.setOnClickListener {
+            if (!upscaling.get() && file.exists()) {
+                btnLocalUpscale.isEnabled = false
+                upscale4k(decodeSampled(file, 1400) ?: return@setOnClickListener, false) {
+                    iv.setImageBitmap(it)
+                    btnLocalUpscale.isEnabled = true
+                }
             }
         }
         btnSaveG.setOnClickListener {
@@ -1292,6 +1267,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun clearButtonTints(view: View) {
+        when (view) {
+            is Button -> view.backgroundTintList = null
+            is ViewGroup -> for (i in 0 until view.childCount) clearButtonTints(view.getChildAt(i))
+        }
+    }
 
     private fun saveRecord(bitmap: Bitmap, idea: String, englishPrompt: String) {
         try {
@@ -1337,6 +1319,11 @@ class MainActivity : AppCompatActivity() {
         } finally {
             outputStream?.close()
         }
+    }
+
+    override fun onDestroy() {
+        localUpscaler.close()
+        super.onDestroy()
     }
 
     private fun setBusy(busy: Boolean, img: Boolean = false) {

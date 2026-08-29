@@ -344,7 +344,8 @@
                     android:background="@drawable/bg_btn_outline"
                     android:textSize="14sp"
                     android:stateListAnimator="@null"
-                    android:enabled="false"/>
+                    android:enabled="false"
+                    android:visibility="gone"/>
 
                 <Button
                     android:id="@+id/btnSave"
@@ -541,7 +542,8 @@
                     android:background="@drawable/bg_btn_outline"
                     android:textSize="14sp"
                     android:stateListAnimator="@null"
-                    android:enabled="false"/>
+                    android:enabled="false"
+                    android:visibility="gone"/>
 
                 <Button
                     android:id="@+id/btnImgSave"

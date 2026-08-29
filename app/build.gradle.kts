@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.aiphotoapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1000015
-        versionName = "1.0-waterfall-gallery"
+        versionCode = 1000016
+        versionName = "1.0-local-upscaler"
 
         buildConfigField("String", "AGNES_API_KEY", "\"${project.findProperty("AGNES_API_KEY") ?: ""}\"")
     }
@@ -42,6 +42,7 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
 
     // 网络请求库 OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
