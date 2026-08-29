@@ -57,7 +57,4 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
-
-    // LeakCanary 内存泄漏检测
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 }
