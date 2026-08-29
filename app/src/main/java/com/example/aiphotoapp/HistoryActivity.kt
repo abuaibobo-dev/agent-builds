@@ -54,7 +54,7 @@ class HistoryActivity : AppCompatActivity() {
             textSize = 14f
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF757575.toInt())
-            singleLine = true
+            setSingleLine(true)
             setBackgroundResource(R.drawable.bg_card)
             setPadding(dp(10), dp(8), dp(10), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
