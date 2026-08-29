@@ -651,6 +651,14 @@ class MainActivity : AppCompatActivity() {
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setBackgroundResource(R.drawable.bg_card)
             })
+            val zoomDialog = android.app.Dialog(this)
+            zoomDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+            zoomDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+            zoomDialog.setContentView(view)
+            @Suppress("DEPRECATION")
+            zoomDialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            zoomDialog.window?.setGravity(android.view.Gravity.CENTER)
+            zoomDialog.window?.setDimAmount(0.6f)
             view.addView(Button(this).apply {
                 text = "保存到相册"
                 textSize = 14f
@@ -665,14 +673,6 @@ class MainActivity : AppCompatActivity() {
                     zoomDialog.dismiss()
                 }
             })
-            val zoomDialog = android.app.Dialog(this)
-            zoomDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-            zoomDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
-            zoomDialog.setContentView(view)
-            @Suppress("DEPRECATION")
-            zoomDialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            zoomDialog.window?.setGravity(android.view.Gravity.CENTER)
-            zoomDialog.window?.setDimAmount(0.6f)
             zoomDialog.show()
         }
         llBatchWall.addView(thumb, 0)
@@ -1749,6 +1749,13 @@ class MainActivity : AppCompatActivity() {
             "暗黑哥特风", "宫崎骏治愈系"
         )
         val view = ScrollView(this)
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.8).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(android.view.Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(4))
@@ -1775,14 +1782,7 @@ class MainActivity : AppCompatActivity() {
             list.addView(item)
         }
 
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
         dialog.setContentView(view)
-        @Suppress("DEPRECATION")
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.8).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.window?.setGravity(android.view.Gravity.CENTER)
-        dialog.window?.setDimAmount(0.6f)
         dialog.show()
     }
 
