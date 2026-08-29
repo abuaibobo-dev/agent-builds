@@ -38,10 +38,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    
-    // 图片加载库 Coil (极其轻量好用)
-    implementation("io.coil-kt:coil:2.5.0")
-    
+
     // 网络请求库 OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
