@@ -104,6 +104,8 @@ class MainActivity : AppCompatActivity() {
     private var antiAi = false
     private var currentBitmap: Bitmap? = null
     private var imgCurrentBitmap: Bitmap? = null
+    private var lastElapsedMs = 0L
+    private var lastUsedSource = ""
     private var currentPromptText = ""
     private var tvPreviewText = ""
     private var lastIdea = ""
@@ -250,6 +252,16 @@ class MainActivity : AppCompatActivity() {
             generateImage(prompt)
         }
 
+        findViewById<Button>(R.id.btnCompare).setOnClickListener {
+            if (generating.get()) return@setOnClickListener
+            val prompt = etPrompt.text.toString().trim()
+            if (prompt.isEmpty()) {
+                Toast.makeText(this, "先输入描述再对比", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            compareProviders(prompt)
+        }
+
         btnPolish.setOnClickListener {
             val prompt = etPrompt.text.toString().trim()
             if (prompt.isEmpty()) {
@@ -344,6 +356,12 @@ class MainActivity : AppCompatActivity() {
 
         btnSave.setOnClickListener {
             saveBitmapToGallery(currentBitmap)
+        }
+        findViewById<Button>(R.id.btnWallpaper).setOnClickListener {
+            wallpaperCurrentBitmap(currentBitmap)
+        }
+        findViewById<Button>(R.id.btnShare).setOnClickListener {
+            shareBitmap(currentBitmap)
         }
     }
 
@@ -682,6 +700,8 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     btnSave.isEnabled = true
                     btnUpscale.isEnabled = true
+                    findViewById<Button>(R.id.btnWallpaper).isEnabled = true
+                    findViewById<Button>(R.id.btnShare).isEnabled = true
                 }
                 saveRecord(bmp, idea, idea)
                 return bmp
@@ -954,6 +974,96 @@ class MainActivity : AppCompatActivity() {
         return m?.groupValues?.get(1)
     }
 
+    private fun compareProviders(idea: String) {
+        if (generating.getAndSet(true)) return
+        setBusy(true)
+        tvStatus.text = "三引擎同时出图中，请稍候…"
+        val (_, w, h) = ratios[selectedRatio]
+
+        val results = java.util.concurrent.ConcurrentHashMap<Provider, Bitmap?>()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+        for (p in listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)) {
+            pool.execute {
+                try {
+                    val bmp = when (p) {
+                        Provider.AGNES -> generateWithAgnes(idea, w, h, null)
+                        Provider.HFFLUX -> generateWithHfFlux(idea, w, h)
+                        Provider.POLLINATIONS -> generateWithPollinations(idea, w, h)
+                    }
+                    results[p] = bmp
+                    runOnUiThread { tvStatus.text = "对比中：${p.label} 完成 ${results.size}/3" }
+                } catch (e: Exception) {
+                    results[p] = null
+                }
+            }
+        }
+        pool.shutdown()
+        thread {
+            pool.awaitTermination(180, java.util.concurrent.TimeUnit.SECONDS)
+            runOnUiThread { showCompareDialog(idea, results) }
+        }
+    }
+
+    private fun showCompareDialog(idea: String, results: java.util.concurrent.ConcurrentHashMap<Provider, Bitmap?>) {
+        generating.set(false)
+        setBusy(false)
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 16, 18, 12)
+        }
+        var anySuccess = false
+        for (p in listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)) {
+            val bmp = results[p]
+            val label = "${p.label}${if (bmp == null) "（失败）" else " ✓"}"
+            view.addView(TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(if (bmp != null) 0xFFFFFFFF.toInt() else 0xFFB3B3B3.toInt())
+                setPadding(0, dp(6), 0, dp(4))
+            })
+            if (bmp != null) {
+                anySuccess = true
+                val iv = ImageView(this)
+                iv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180))
+                iv.scaleType = ImageView.ScaleType.FIT_CENTER
+                iv.setBackgroundResource(R.drawable.bg_card)
+                iv.setImageBitmap(bmp)
+                view.addView(iv)
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                val mk = { label: String, act: () -> Unit ->
+                    Button(this).apply {
+                        text = label
+                        textSize = 12f
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setBackgroundResource(R.drawable.bg_btn_outline)
+                        stateListAnimator = null
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dp(6), 0) }
+                        setOnClickListener { act() }
+                    }
+                }
+                row.addView(mk("保存") { saveRecord(bmp, idea, idea) })
+                row.addView(mk("设壁纸") { wallpaperCurrentBitmap(bmp) })
+                view.addView(row)
+            }
+        }
+        if (!anySuccess) {
+            view.addView(TextView(this).apply {
+                text = "三个引擎都没成功，稍后再试"
+                setTextColor(0xFFB3B3B3.toInt())
+                setPadding(0, dp(16), 0, dp(8))
+            })
+        }
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        dialog.setContentView(view)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(android.view.Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
+        dialog.show()
+    }
+
     private fun generateImage(idea: String) {
         if (generating.getAndSet(true)) return
         setBusy(true)
@@ -974,6 +1084,7 @@ class MainActivity : AppCompatActivity() {
 
             var bitmap: Bitmap? = null
             var usedSource = ""
+            val startAt = System.currentTimeMillis()
             for (p in providers) {
                 runOnUiThread { tvStatus.text = p.loadingText }
                 bitmap = when (p) {
@@ -986,6 +1097,8 @@ class MainActivity : AppCompatActivity() {
                     break
                 }
             }
+            lastElapsedMs = System.currentTimeMillis() - startAt
+            lastUsedSource = usedSource
 
             val finalBitmap = bitmap
             val source = usedSource
@@ -993,7 +1106,7 @@ class MainActivity : AppCompatActivity() {
                 if (finalBitmap != null) {
                     currentBitmap = finalBitmap
                     ivResult.setImageBitmap(finalBitmap)
-                    tvStatus.text = "生成成功（$source）！已存入“我的作品”"
+                    tvStatus.text = "生成成功（$source · ${lastElapsedMs / 1000f}s）！已存入“我的作品”"
                     btnSave.isEnabled = true
                     saveRecord(finalBitmap, idea, enhancedPrompt)
                 } else {
@@ -1470,6 +1583,8 @@ class MainActivity : AppCompatActivity() {
             val indexFile = File(worksDir, "index.json")
             val arr = if (indexFile.exists()) JSONArray(indexFile.readText()) else JSONArray()
             val obj = JSONObject().put("ts", ts).put("idea", idea).put("prompt", englishPrompt).put("file", file.name)
+            val elapsedMs = lastElapsedMs
+            if (elapsedMs > 0) obj.put("ms", elapsedMs)
             arr.put(0, obj)
             while (arr.length() > 50) arr.remove(arr.length() - 1)
             indexFile.writeText(arr.toString())
@@ -1507,6 +1622,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun wallpaperCurrentBitmap(bitmap: Bitmap?) {
+        if (bitmap == null) {
+            Toast.makeText(this, "没有可设置的图片", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val wm = android.app.WallpaperManager.getInstance(this)
+            wm.setBitmap(bitmap)
+            Toast.makeText(this, "壁纸已设置（锁屏+桌面）", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "设壁纸失败", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareBitmap(bitmap: Bitmap?) {
+        if (bitmap == null) {
+            Toast.makeText(this, "没有可分享的图片", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val cache = File(cacheDir, "share_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(cache).use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", cache)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "分享图片"))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "分享失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun setBusy(busy: Boolean, img: Boolean = false) {
         if (img) {
             btnImgGenerate.isEnabled = !busy
@@ -1522,6 +1673,9 @@ class MainActivity : AppCompatActivity() {
             pbLoading.visibility = if (busy) View.VISIBLE else View.GONE
             if (!busy) btnSave.isEnabled = currentBitmap != null
             if (!busy) btnUpscale.isEnabled = currentBitmap != null && !upscaling.get()
+            if (!busy) findViewById<Button>(R.id.btnWallpaper).isEnabled = currentBitmap != null
+            if (!busy) findViewById<Button>(R.id.btnShare).isEnabled = currentBitmap != null
+            findViewById<Button>(R.id.btnCompare).isEnabled = !busy
         }
     }
 }

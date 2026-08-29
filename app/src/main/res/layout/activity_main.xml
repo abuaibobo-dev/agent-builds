@@ -130,17 +130,37 @@
                     android:gravity="top"
                     android:layout_marginTop="12dp" />
 
-                <Button
-                    android:id="@+id/btnGenerate"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="52dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="生成图片"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/chip_selected_text"
-                    android:background="@drawable/bg_btn_primary"
-                    android:stateListAnimator="@null"/>
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnGenerate"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:text="生成图片"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/chip_selected_text"
+                        android:background="@drawable/bg_btn_primary"
+                        android:stateListAnimator="@null"/>
+
+                    <Button
+                        android:id="@+id/btnCompare"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="10dp"
+                        android:text="三引擎对比"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/bg_btn_outline"
+                        android:stateListAnimator="@null"/>
+
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/btnPolish"
@@ -248,17 +268,51 @@
                     android:stateListAnimator="@null"
                     android:enabled="false"/>
 
-                <Button
-                    android:id="@+id/btnSave"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="保存到相册"
-                    android:textColor="@color/text_primary"
-                    android:background="@drawable/bg_btn_outline"
-                    android:textSize="14sp"
-                    android:stateListAnimator="@null"
-                    android:enabled="false"/>
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnSave"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="存相册"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/bg_btn_outline"
+                        android:textSize="14sp"
+                        android:stateListAnimator="@null"
+                        android:enabled="false"/>
+
+                    <Button
+                        android:id="@+id/btnWallpaper"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="10dp"
+                        android:text="设壁纸"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/bg_btn_outline"
+                        android:textSize="14sp"
+                        android:stateListAnimator="@null"
+                        android:enabled="false"/>
+
+                    <Button
+                        android:id="@+id/btnShare"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="10dp"
+                        android:text="分享"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/bg_btn_outline"
+                        android:textSize="14sp"
+                        android:stateListAnimator="@null"
+                        android:enabled="false"/>
+
+                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
