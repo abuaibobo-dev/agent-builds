@@ -4,7 +4,6 @@ import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -13,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -48,6 +48,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRef: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
+    private lateinit var ivRefThumb: ImageView
+    private lateinit var frameRefThumb: FrameLayout
+    private lateinit var tvRefClear: TextView
     private lateinit var tvStatus: TextView
     private lateinit var tvPreview: TextView
     private lateinit var pbLoading: ProgressBar
@@ -128,7 +131,11 @@ class MainActivity : AppCompatActivity() {
         btnHistory = findViewById(R.id.btnHistory)
         btnRef = findViewById(R.id.btnRef)
         btnVariation = findViewById(R.id.btnVariation)
+        btnRandom = findViewById(R.id.btnRandom)
         ivResult = findViewById(R.id.ivResult)
+        ivRefThumb = findViewById(R.id.ivRefThumb)
+        frameRefThumb = findViewById(R.id.frameRefThumb)
+        tvRefClear = findViewById(R.id.tvRefClear)
         tvStatus = findViewById(R.id.tvStatus)
         tvPreview = findViewById(R.id.tvPreview)
         pbLoading = findViewById(R.id.pbLoading)
@@ -167,12 +174,38 @@ class MainActivity : AppCompatActivity() {
             pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
+        tvRefClear.setOnClickListener {
+            refImageUrl = null
+            frameRefThumb.visibility = View.GONE
+            tvStatus.text = "已清除参考图"
+            btnRef.text = "参考图"
+        }
+
+        ivRefThumb.setOnClickListener {
+            if (refImageUrl != null && !generating.get()) {
+                pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        }
+
         btnSave.setOnClickListener {
             saveBitmapToGallery(currentBitmap)
         }
 
         btnHistory.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val prefs = getSharedPreferences("gallery", MODE_PRIVATE)
+        val pending = prefs.getString("pending_ref", null)
+        if (pending != null) {
+            prefs.edit().remove("pending_ref").apply()
+            val file = File(pending)
+            if (file.exists()) {
+                uploadRefImage(Uri.fromFile(file))
+            }
         }
     }
 
@@ -200,14 +233,14 @@ class MainActivity : AppCompatActivity() {
         val ratioChips = findViewById<LinearLayout>(R.id.llRatio)
         for (i in 0 until ratioChips.childCount) {
             val chip = ratioChips.getChildAt(i) as Button
-            chip.setBackgroundColor(if (i == selectedRatio) 0xFFFF6200.toInt() else 0xFF333333.toInt())
-            chip.setTextColor(if (i == selectedRatio) Color.WHITE else 0xFFBBBBBB.toInt())
+            chip.setBackgroundResource(if (i == selectedRatio) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+            chip.setTextColor(if (i == selectedRatio) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
         }
         val styleChips = findViewById<LinearLayout>(R.id.llStyle)
         for (i in 0 until styleChips.childCount) {
             val chip = styleChips.getChildAt(i) as Button
-            chip.setBackgroundColor(if (i == selectedStyle) 0xFF03DAC5.toInt() else 0xFF333333.toInt())
-            chip.setTextColor(if (i == selectedStyle) Color.BLACK else 0xFFBBBBBB.toInt())
+            chip.setBackgroundResource(if (i == selectedStyle) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+            chip.setTextColor(if (i == selectedStyle) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
         }
     }
 
@@ -303,9 +336,14 @@ class MainActivity : AppCompatActivity() {
     private fun generateWithAgnes(prompt: String, w: Int, h: Int, refUrl: String?): Bitmap? {
         if (agnesKey.isEmpty()) return null
         return try {
+            val finalPrompt = if (refUrl != null) {
+                "Use the reference image as the base. Keep the same composition, subject and overall look, only apply the described changes. $prompt"
+            } else {
+                prompt
+            }
             val body = JSONObject()
                 .put("model", "agnes-image-2.1-flash")
-                .put("prompt", prompt)
+                .put("prompt", finalPrompt)
                 .put("size", "${w}x${h}")
             refUrl?.let { body.put("image", it) }
             val resp = postJson("$agnesBase/images/generations", body)
@@ -442,11 +480,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun uploadRefImage(uri: Uri) {
         thread {
-            runOnUiThread { tvStatus.text = "读取图片并上传（作为参考图）..." }
+            runOnUiThread { tvStatus.text = "解析参考图..." }
             try {
                 val cacheRef = File(cacheDir, "ref_${System.currentTimeMillis()}.jpg")
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(cacheRef).use { output -> input.copyTo(output) }
+                }
+                val thumb = BitmapFactory.decodeFile(cacheRef.absolutePath)
+                if (thumb != null) {
+                    runOnUiThread {
+                        ivRefThumb.setImageBitmap(thumb)
+                        frameRefThumb.visibility = View.VISIBLE
+                        btnRef.text = "参考图加载中..."
+                    }
                 }
                 val mediaType = "image/jpeg".toMediaType()
                 val fileBody = cacheRef.asRequestBody(mediaType)
@@ -460,16 +506,60 @@ class MainActivity : AppCompatActivity() {
                 if (urlText != null && urlText.startsWith("http")) {
                     refImageUrl = urlText
                     runOnUiThread {
-                        tvStatus.text = "参考图已就绪：生图时将按此图风格重绘"
-                        btnRef.text = "✅ 参考图已选（点击更换）"
+                        btnRef.text = "已选参考图"
+                        tvStatus.text = "参考图就绪，正在反推提示词..."
                     }
+                    reversePrompt(cacheRef)
                 } else {
-                    runOnUiThread { tvStatus.text = "参考图上传失败，请重试" }
+                    runOnUiThread {
+                        btnRef.text = "参考图"
+                        tvStatus.text = "参考图上传失败，请重试"
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                runOnUiThread { tvStatus.text = "参考图上传失败：${e.message}" }
+                runOnUiThread {
+                    btnRef.text = "参考图"
+                    tvStatus.text = "参考图处理失败：${e.message}"
+                }
             }
+        }
+    }
+
+    private fun reversePrompt(imageFile: File) {
+        if (agnesKey.isEmpty()) return
+        try {
+            val base64 = java.util.Base64.getEncoder().encodeToString(imageFile.readBytes())
+            val body = JSONObject()
+                .put("model", "agnes-2.0-flash")
+                .put("max_tokens", 300)
+                .put("messages", JSONArray().put(
+                    JSONObject()
+                        .put("role", "user")
+                        .put("content", JSONArray()
+                            .put(JSONObject().put("type", "text")
+                                .put("text", "Describe this image as a detailed English image-generation prompt. Include subject, style, lighting, mood. Output only the English prompt, no quotes, under 80 words."))
+                            .put(JSONObject().put("type", "image_url")
+                                .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$base64"))))))
+            val resp = postJson("$agnesBase/chat/completions", body)
+            var desc = resp?.getJSONArray("choices")?.getJSONObject(0)
+                ?.getJSONObject("message")?.optString("content", "")
+            if (desc.isNullOrBlank()) {
+                desc = resp?.getJSONArray("choices")?.getJSONObject(0)
+                    ?.getJSONObject("message")?.optString("reasoning_content", "")
+            }
+            if (!desc.isNullOrBlank() && desc.length() > 12) {
+                val finalDesc = desc.trim()
+                runOnUiThread {
+                    etPrompt.setText(finalDesc)
+                    tvStatus.text = "已反推提示词，可修改后再生成"
+                }
+            } else {
+                runOnUiThread { tvStatus.text = "反推失败，请手动输入描述" }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            runOnUiThread { tvStatus.text = "反推失败，请手动输入描述" }
         }
     }
 

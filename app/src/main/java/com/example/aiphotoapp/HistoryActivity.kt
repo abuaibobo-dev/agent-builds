@@ -32,9 +32,12 @@ class HistoryActivity : AppCompatActivity() {
 
         worksDir = File(filesDir, "works").apply { mkdirs() }
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(0xFF0F0F0F.toInt())
+        }
         container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         scroll.addView(container, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         setContentView(scroll)
@@ -53,6 +56,7 @@ class HistoryActivity : AppCompatActivity() {
                 text = "还没有作品，去生成第一张吧！"
                 setPadding(48, 120, 48, 48)
                 textSize = 16f
+                setTextColor(0xFFB3B3B3.toInt())
             })
             return
         }
@@ -69,7 +73,8 @@ class HistoryActivity : AppCompatActivity() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(8, 8, 8, 8)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setBackgroundResource(R.drawable.bg_card)
         }
 
         val thumb = ImageView(this)
@@ -92,10 +97,12 @@ class HistoryActivity : AppCompatActivity() {
         textCol.addView(TextView(this).apply {
             text = idea.ifEmpty { "(无描述)" }
             textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt())
         })
         textCol.addView(TextView(this).apply {
             text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
             textSize = 12f
+            setTextColor(0xFF757575.toInt())
         })
 
         card.addView(textCol)
@@ -105,9 +112,8 @@ class HistoryActivity : AppCompatActivity() {
         }
 
         val sep = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
-        sep.setMargins(dp(8), 0, dp(8), dp(4))
+        sep.setMargins(dp(8), 0, dp(8), dp(8))
         container.addView(card)
-        container.addView(android.view.View(this), sep)
     }
 
     private fun showPreview(obj: JSONObject) {
@@ -131,27 +137,41 @@ class HistoryActivity : AppCompatActivity() {
             text = "想法：$idea"
             setPadding(0, dp(12), 0, 0)
             textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt())
         })
         view.addView(TextView(this).apply {
             text = "提示词：$prompt"
             setPadding(0, dp(6), 0, 0)
             textSize = 11f
+            setTextColor(0xFFB3B3B3.toInt())
         })
 
         val btnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(14), 0, 0)
         }
+        val btnRedraw = Button(this)
+        btnRedraw.text = "一键重绘"
         val btnSave = Button(this)
         btnSave.text = "保存到相册"
         val btnDelete = Button(this)
         btnDelete.text = "删除"
+        listOf(btnRedraw, btnSave, btnDelete).forEach { b ->
+            b.setTextColor(0xFFFFFFFF.toInt())
+            b.setBackgroundResource(R.drawable.bg_btn_outline)
+            b.textSize = 14f
+            b.stateListAnimator = null
+        }
 
+        val redrawLp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         val saveLp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         val delLp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        delLp.marginStart = dp(12)
+        saveLp.marginStart = dp(8)
+        delLp.marginStart = dp(8)
+        btnRedraw.layoutParams = redrawLp
         btnSave.layoutParams = saveLp
         btnDelete.layoutParams = delLp
+        btnRow.addView(btnRedraw)
         btnRow.addView(btnSave)
         btnRow.addView(btnDelete)
         view.addView(btnRow)
@@ -161,6 +181,16 @@ class HistoryActivity : AppCompatActivity() {
             .setView(view)
             .setNegativeButton("关闭", null)
             .create()
+
+        btnRedraw.setOnClickListener {
+            getSharedPreferences("gallery", MODE_PRIVATE)
+                .edit()
+                .putString("pending_ref", file.absolutePath)
+                .apply()
+            Toast.makeText(this, "已设为参考图，返回生成页", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+            finish()
+        }
 
         btnSave.setOnClickListener {
             val bitmap = decodeSampled(file, 2048)
