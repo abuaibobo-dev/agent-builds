@@ -40,21 +40,34 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
+    private lateinit var tabGenerate: View
+    private lateinit var tabImg2img: View
+    private lateinit var tabGallery: View
+    private lateinit var tabSettings: View
+
     private lateinit var etPrompt: EditText
     private lateinit var btnGenerate: Button
     private lateinit var btnPolish: Button
     private lateinit var btnSave: Button
     private lateinit var btnRandom: Button
-    private lateinit var btnHistory: Button
-    private lateinit var btnRef: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
-    private lateinit var ivRefThumb: ImageView
-    private lateinit var frameRefThumb: FrameLayout
-    private lateinit var tvRefClear: TextView
     private lateinit var tvStatus: TextView
     private lateinit var tvPreview: TextView
     private lateinit var pbLoading: ProgressBar
+
+    private lateinit var btnRef: Button
+    private lateinit var etImgPrompt: EditText
+    private lateinit var btnImgGenerate: Button
+    private lateinit var btnImgSave: Button
+    private lateinit var ivImgResult: ImageView
+    private lateinit var ivImgRefThumb: ImageView
+    private lateinit var frameImgRefThumb: FrameLayout
+    private lateinit var tvImgRefClear: TextView
+    private lateinit var tvImgStatus: TextView
+    private lateinit var pbImgLoading: ProgressBar
+    private lateinit var llGallery: LinearLayout
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -66,7 +79,9 @@ class MainActivity : AppCompatActivity() {
     private var selectedRatio = 0
     private var selectedStyle = 0
     private var currentBitmap: Bitmap? = null
+    private var imgCurrentBitmap: Bitmap? = null
     private var currentPromptText = ""
+    private var tvPreviewText = ""
     private var lastIdea = ""
     private var refImageUrl: String? = null
 
@@ -127,26 +142,64 @@ class MainActivity : AppCompatActivity() {
 
         worksDir = File(filesDir, "works").apply { mkdirs() }
 
+        bottomNav = findViewById(R.id.bottomNav)
+        tabGenerate = findViewById(R.id.tab_generate)
+        tabImg2img = findViewById(R.id.tab_img2img)
+        tabGallery = findViewById(R.id.tab_gallery)
+        tabSettings = findViewById(R.id.tab_settings)
+
         etPrompt = findViewById(R.id.etPrompt)
         btnGenerate = findViewById(R.id.btnGenerate)
         btnPolish = findViewById(R.id.btnPolish)
         btnSave = findViewById(R.id.btnSave)
         btnRandom = findViewById(R.id.btnRandom)
-        btnHistory = findViewById(R.id.btnHistory)
-        btnRef = findViewById(R.id.btnRef)
         btnVariation = findViewById(R.id.btnVariation)
-        btnRandom = findViewById(R.id.btnRandom)
         ivResult = findViewById(R.id.ivResult)
-        ivRefThumb = findViewById(R.id.ivRefThumb)
-        frameRefThumb = findViewById(R.id.frameRefThumb)
-        tvRefClear = findViewById(R.id.tvRefClear)
         tvStatus = findViewById(R.id.tvStatus)
         tvPreview = findViewById(R.id.tvPreview)
         pbLoading = findViewById(R.id.pbLoading)
 
+        btnRef = findViewById(R.id.btnRef)
+        etImgPrompt = findViewById(R.id.etImgPrompt)
+        btnImgGenerate = findViewById(R.id.btnImgGenerate)
+        btnImgSave = findViewById(R.id.btnImgSave)
+        ivImgResult = findViewById(R.id.ivImgResult)
+        ivImgRefThumb = findViewById(R.id.ivImgRefThumb)
+        frameImgRefThumb = findViewById(R.id.frameImgRefThumb)
+        tvImgRefClear = findViewById(R.id.tvImgRefClear)
+        tvImgStatus = findViewById(R.id.tvImgStatus)
+        pbImgLoading = findViewById(R.id.pbImgLoading)
+        llGallery = findViewById(R.id.llGallery)
+
         buildChips(findViewById(R.id.llRatio), ratios.map { it.first }) { selectedRatio = it }
         buildChips(findViewById(R.id.llStyle), styleLabels) { selectedStyle = it }
         renderChipSelection()
+
+        bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_tab_generate -> showTab(tabGenerate)
+                R.id.nav_tab_img2img -> showTab(tabImg2img)
+                R.id.nav_tab_gallery -> {
+                    showTab(tabGallery)
+                    loadGallery()
+                }
+                R.id.nav_tab_settings -> showTab(tabSettings)
+            }
+            true
+        }
+
+        findViewById<Button>(R.id.btnClearHistory).setOnClickListener {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("清空我的作品")
+                .setMessage("确定删除全部作品？此操作不可恢复。")
+                .setPositiveButton("清空") { _, _ ->
+                    worksDir.listFiles()?.forEach { it.delete() }
+                    loadGallery()
+                    Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
 
         btnGenerate.setOnClickListener {
             val prompt = etPrompt.text.toString().trim()
@@ -187,26 +240,46 @@ class MainActivity : AppCompatActivity() {
             pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
-        tvRefClear.setOnClickListener {
+        tvImgRefClear.setOnClickListener {
             refImageUrl = null
-            frameRefThumb.visibility = View.GONE
-            tvStatus.text = "已清除参考图"
-            btnRef.text = "参考图"
+            frameImgRefThumb.visibility = View.GONE
+            tvImgStatus.text = "已清除参考图"
+            btnRef.text = "选参考图（从相册）"
         }
 
-        ivRefThumb.setOnClickListener {
+        ivImgRefThumb.setOnClickListener {
             if (refImageUrl != null && !generating.get()) {
                 pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
 
+        btnImgGenerate.setOnClickListener {
+            val prompt = etImgPrompt.text.toString().trim()
+            if (prompt.isEmpty()) {
+                Toast.makeText(this, "请输入修改描述", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (refImageUrl == null) {
+                Toast.makeText(this, "请先选择参考图", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            generateImageFrom(prompt)
+        }
+
+        btnImgSave.setOnClickListener {
+            saveBitmapToGallery(imgCurrentBitmap)
+        }
+
         btnSave.setOnClickListener {
             saveBitmapToGallery(currentBitmap)
         }
+    }
 
-        btnHistory.setOnClickListener {
-            startActivity(Intent(this, HistoryActivity::class.java))
-        }
+    private fun showTab(target: View) {
+        tabGenerate.visibility = if (target == tabGenerate) View.VISIBLE else View.GONE
+        tabImg2img.visibility = if (target == tabImg2img) View.VISIBLE else View.GONE
+        tabGallery.visibility = if (target == tabGallery) View.VISIBLE else View.GONE
+        tabSettings.visibility = if (target == tabSettings) View.VISIBLE else View.GONE
     }
 
     override fun onResume() {
@@ -270,6 +343,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun generateImageFrom(idea: String) {
+        if (generating.getAndSet(true)) return
+        setBusy(true, img = true)
+
+        thread {
+            val (_, w, h) = ratios[selectedRatio]
+
+            runOnUiThread { tvImgStatus.text = "智能优化提示词..." }
+            val enhancedPrompt = polishPrompt(idea)
+            tvPreviewText = enhancedPrompt
+
+            val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
+
+            var bitmap: Bitmap? = null
+            var usedSource = ""
+            for (p in providers) {
+                runOnUiThread { tvImgStatus.text = p.loadingText }
+                bitmap = when (p) {
+                    Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, refImageUrl)
+                    Provider.HFFLUX -> generateWithHfFlux(enhancedPrompt, w, h)
+                    Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h)
+                }
+                if (bitmap != null) {
+                    usedSource = p.label
+                    break
+                }
+            }
+
+            val finalBitmap = bitmap
+            val source = usedSource
+            runOnUiThread {
+                if (finalBitmap != null) {
+                    imgCurrentBitmap = finalBitmap
+                    ivImgResult.setImageBitmap(finalBitmap)
+                    tvImgStatus.text = "生成成功（$source）！已存入“我的作品”"
+                    btnImgSave.isEnabled = true
+                    saveRecord(finalBitmap, idea, enhancedPrompt)
+                } else {
+                    tvImgStatus.text = "生成失败：所有引擎都忙或网络超时，请稍后重试"
+                }
+                setBusy(false, img = true)
+                generating.set(false)
+            }
+        }
+    }
+
     private fun generateImage(idea: String) {
         if (generating.getAndSet(true)) return
         setBusy(true)
@@ -293,7 +412,7 @@ class MainActivity : AppCompatActivity() {
             for (p in providers) {
                 runOnUiThread { tvStatus.text = p.loadingText }
                 bitmap = when (p) {
-                    Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, refImageUrl)
+                    Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, null)
                     Provider.HFFLUX -> generateWithHfFlux(enhancedPrompt, w, h)
                     Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h)
                 }
@@ -513,7 +632,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun uploadRefImage(uri: Uri) {
         thread {
-            runOnUiThread { tvStatus.text = "解析参考图..." }
+            runOnUiThread { tvImgStatus.text = "解析参考图..." }
             try {
                 val cacheRef = File(cacheDir, "ref_${System.currentTimeMillis()}.jpg")
                 contentResolver.openInputStream(uri)?.use { input ->
@@ -522,8 +641,8 @@ class MainActivity : AppCompatActivity() {
                 val thumb = BitmapFactory.decodeFile(cacheRef.absolutePath)
                 if (thumb != null) {
                     runOnUiThread {
-                        ivRefThumb.setImageBitmap(thumb)
-                        frameRefThumb.visibility = View.VISIBLE
+                        ivImgRefThumb.setImageBitmap(thumb)
+                        frameImgRefThumb.visibility = View.VISIBLE
                         btnRef.text = "参考图加载中..."
                     }
                 }
@@ -540,20 +659,20 @@ class MainActivity : AppCompatActivity() {
                     refImageUrl = urlText
                     runOnUiThread {
                         btnRef.text = "已选参考图"
-                        tvStatus.text = "参考图就绪，正在反推提示词..."
+                        tvImgStatus.text = "参考图就绪，正在反推提示词..."
                     }
                     reversePrompt(cacheRef)
                 } else {
                     runOnUiThread {
-                        btnRef.text = "参考图"
-                        tvStatus.text = "参考图上传失败，请重试"
+                        btnRef.text = "选参考图（从相册）"
+                        tvImgStatus.text = "参考图上传失败，请重试"
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 runOnUiThread {
-                    btnRef.text = "参考图"
-                    tvStatus.text = "参考图处理失败：${e.message}"
+                    btnRef.text = "选参考图（从相册）"
+                    tvImgStatus.text = "参考图处理失败：${e.message}"
                 }
             }
         }
@@ -584,17 +703,168 @@ class MainActivity : AppCompatActivity() {
             if (!desc.isNullOrBlank() && desc.length() > 12) {
                 val finalDesc = desc.trim()
                 runOnUiThread {
-                    etPrompt.setText(finalDesc)
-                    tvStatus.text = "已反推提示词，可修改后再生成"
+                    etImgPrompt.setText(finalDesc)
+                    tvImgStatus.text = "已反推提示词，可修改后再生成"
                 }
             } else {
-                runOnUiThread { tvStatus.text = "反推失败，请手动输入描述" }
+                runOnUiThread { tvImgStatus.text = "反推失败，请手动输入描述" }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            runOnUiThread { tvStatus.text = "反推失败，请手动输入描述" }
+            runOnUiThread { tvImgStatus.text = "反推失败，请手动输入描述" }
         }
     }
+
+    private fun loadGallery() {
+        llGallery.removeAllViews()
+        val index = File(worksDir, "index.json")
+        val arr = if (index.exists() && index.length() > 0) JSONArray(index.readText()) else JSONArray()
+
+        if (arr.length() == 0) {
+            llGallery.addView(TextView(this).apply {
+                text = "还没有作品，去生成第一张吧！"
+                setPadding(48, 100, 48, 48)
+                textSize = 16f
+                setTextColor(0xFFB3B3B3.toInt())
+                gravity = android.view.Gravity.CENTER
+            })
+            return
+        }
+
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val ts = obj.getLong("ts")
+            val idea = obj.optString("idea", "")
+            val file = File(worksDir, obj.optString("file", ""))
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(12, 12, 12, 12)
+                setBackgroundResource(R.drawable.bg_card)
+            }
+            val lp = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(0, 0, 0, dp(10))
+            card.layoutParams = lp
+
+            val thumb = ImageView(this)
+            val tsd = dp(72)
+            thumb.layoutParams = LinearLayout.LayoutParams(tsd, tsd)
+            thumb.scaleType = ImageView.ScaleType.CENTER_CROP
+            if (file.exists()) thumb.setImageBitmap(decodeSampled(file, 160))
+            card.addView(thumb)
+
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            val tlp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            tlp.marginStart = dp(12)
+            textCol.layoutParams = tlp
+            textCol.addView(TextView(this).apply {
+                text = idea.ifEmpty { "(无描述)" }
+                textSize = 14f
+                setTextColor(0xFFFFFFFF.toInt())
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            textCol.addView(TextView(this).apply {
+                text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+                textSize = 12f
+                setTextColor(0xFF757575.toInt())
+            })
+            card.addView(textCol)
+
+            card.setOnClickListener { showGalleryDetail(obj) }
+            llGallery.addView(card)
+        }
+    }
+
+    private fun showGalleryDetail(obj: JSONObject) {
+        val idea = obj.optString("idea", "")
+        val file = File(worksDir, obj.optString("file", ""))
+
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 16, 16, 8)
+        }
+        val iv = ImageView(this)
+        iv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(320))
+        iv.scaleType = ImageView.ScaleType.FIT_CENTER
+        if (file.exists()) iv.setImageBitmap(decodeSampled(file, 1400))
+        view.addView(iv)
+
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 14, 0, 0)
+        }
+        val btnRedraw = Button(this)
+        btnRedraw.text = "设为参考图重绘"
+        val btnSaveG = Button(this)
+        btnSaveG.text = "保存到相册"
+        val btnDelete = Button(this)
+        btnDelete.text = "删除"
+        listOf(btnRedraw, btnSaveG, btnDelete).forEach { b ->
+            b.setTextColor(0xFFFFFFFF.toInt())
+            b.setBackgroundResource(R.drawable.bg_btn_outline)
+            b.textSize = 13f
+            b.stateListAnimator = null
+        }
+        val l1 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        val l2 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        val l3 = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        l2.marginStart = dp(8)
+        l3.marginStart = dp(8)
+        btnRedraw.layoutParams = l1
+        btnSaveG.layoutParams = l2
+        btnDelete.layoutParams = l3
+        btnRow.addView(btnRedraw)
+        btnRow.addView(btnSaveG)
+        btnRow.addView(btnDelete)
+        view.addView(btnRow)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("作品详情")
+            .setView(view)
+            .setNegativeButton("关闭", null)
+            .create()
+
+        btnRedraw.setOnClickListener {
+            dialog.dismiss()
+            if (file.exists()) {
+                showTab(tabImg2img)
+                uploadRefImage(Uri.fromFile(file))
+                Toast.makeText(this, "已设为参考图，去“图生图”页生成", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnSaveG.setOnClickListener {
+            val bmp = decodeSampled(file, 2048)
+            if (bmp != null) saveBitmapToGallery(bmp)
+        }
+        btnDelete.setOnClickListener {
+            file.delete()
+            val index = File(worksDir, "index.json")
+            val arr = JSONArray(index.readText())
+            val next = JSONArray()
+            for (i in 0 until arr.length()) {
+                if (arr.getJSONObject(i).getLong("ts") != obj.getLong("ts")) next.put(arr.getJSONObject(i))
+            }
+            index.writeText(next.toString())
+            dialog.dismiss()
+            loadGallery()
+        }
+        dialog.show()
+    }
+
+    private fun decodeSampled(file: File, maxEdge: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > maxEdge || bounds.outHeight / sample > maxEdge) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeFile(file.absolutePath, opts)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun saveRecord(bitmap: Bitmap, idea: String, englishPrompt: String) {
         try {
@@ -642,13 +912,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setBusy(busy: Boolean) {
-        btnGenerate.isEnabled = !busy
-        btnPolish.isEnabled = !busy
-        btnRandom.isEnabled = !busy
-        btnVariation.isEnabled = !busy
-        btnRef.isEnabled = !busy
-        pbLoading.visibility = if (busy) View.VISIBLE else View.GONE
-        if (!busy) btnSave.isEnabled = currentBitmap != null
+    private fun setBusy(busy: Boolean, img: Boolean = false) {
+        if (img) {
+            btnImgGenerate.isEnabled = !busy
+            btnRef.isEnabled = !busy
+            pbImgLoading.visibility = if (busy) View.VISIBLE else View.GONE
+            if (!busy) btnImgSave.isEnabled = imgCurrentBitmap != null
+        } else {
+            btnGenerate.isEnabled = !busy
+            btnPolish.isEnabled = !busy
+            btnRandom.isEnabled = !busy
+            btnVariation.isEnabled = !busy
+            pbLoading.visibility = if (busy) View.VISIBLE else View.GONE
+            if (!busy) btnSave.isEnabled = currentBitmap != null
+        }
     }
 }
