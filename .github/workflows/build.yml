@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "master", "diagnostic-switch-fix" ]
+    branches: [ "main", "master", "diagnostic-visible-error" ]
   workflow_dispatch:
 
 permissions:
@@ -38,8 +38,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: diagnostic-switch-fix-${{ github.run_number }}
-          name: diagnostic-switch-fix-${{ github.run_number }}
+          tag_name: diagnostic-visible-error-${{ github.run_number }}
+          name: diagnostic-visible-error-${{ github.run_number }}
           body: "自动构建版。从设置 → 检查更新 安装。"
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true

@@ -403,7 +403,13 @@ class MainActivity : AppCompatActivity() {
                 e.printStackTrace(java.io.PrintWriter(sw))
                 File(filesDir, "crash.log").writeText("onCreate: $sw")
             } catch (e2: Exception) {}
-            Toast.makeText(this, "启动失败：${e.javaClass.simpleName}: ${e.message}", Toast.LENGTH_LONG).show()
+            val errorView = TextView(this).apply {
+                setTextColor(0xFFFF8080.toInt())
+                textSize = 14f
+                setPadding(24, 48, 24, 24)
+                text = "启动初始化失败\n\n${e.javaClass.name}: ${e.message}\n\n请截图此页面发回。"
+            }
+            setContentView(errorView)
             e.printStackTrace()
         }
     }
