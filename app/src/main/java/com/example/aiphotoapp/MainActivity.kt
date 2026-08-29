@@ -212,7 +212,7 @@ class MainActivity : AppCompatActivity() {
         llBatchWall = findViewById(R.id.llBatchWall)
         etSeed = findViewById(R.id.etSeed)
         swRandRatio = findViewById(R.id.swRandRatio)
-        findViewById<android.widget.Switch>(R.id.swAntiAi).setOnCheckedChangeListener { _, checked -> antiAi = checked }
+        findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.swAntiAi).setOnCheckedChangeListener { _, checked -> antiAi = checked }
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)

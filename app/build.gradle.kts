@@ -11,14 +11,8 @@ android {
         applicationId = "com.example.aiphotoapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = run {
-            val fromCi = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-            fromCi ?: 2
-        }
-        versionName = run {
-            val buildNo = System.getenv("GITHUB_RUN_NUMBER")
-            if (buildNo != null) "1.0.$buildNo" else "1.0"
-        }
+        versionCode = 1000003
+        versionName = "diagnostic-switch-fix"
 
         buildConfigField("String", "AGNES_API_KEY", "\"${project.findProperty("AGNES_API_KEY") ?: ""}\"")
     }
