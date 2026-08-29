@@ -31,3 +31,12 @@ jobs:
         with:
           name: InfiniteGallery-App
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: v1.0.${{ github.run_number }}
+          body: "自动构建版。从设置 → 检查更新 安装。"
+          files: app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true

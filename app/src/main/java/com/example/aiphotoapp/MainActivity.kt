@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.view.View
@@ -228,6 +229,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<Button>(R.id.btnCheckUpdate).setOnClickListener {
+            Updater.check(this, silent = false)
+        }
+        Updater.check(this)
         btnGenerate.setOnClickListener {
             val prompt = etPrompt.text.toString().trim()
             if (prompt.isEmpty()) {
@@ -562,6 +567,12 @@ class MainActivity : AppCompatActivity() {
         btnRandom.isEnabled = false
         btnVariation.isEnabled = false
         tvBatchStatus.text = "启动批量：$batchTheme"
+        BatchService.ensureChannel(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(Intent(this, BatchService::class.java))
+        } else {
+            startService(Intent(this, BatchService::class.java))
+        }
         thread { batchWorker() }
     }
 
@@ -611,6 +622,7 @@ class MainActivity : AppCompatActivity() {
                 tvBatchStatus.text = "已停止 · 本批共 $batchDoneCount 张"
                 loadGallery()
             }
+            stopService(Intent(this, BatchService::class.java))
         }
     }
 
