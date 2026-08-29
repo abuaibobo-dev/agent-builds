@@ -5,7 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -18,16 +18,22 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.random.Random
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -38,18 +44,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSave: Button
     private lateinit var btnRandom: Button
     private lateinit var btnHistory: Button
+    private lateinit var btnRef: Button
+    private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
     private lateinit var tvStatus: TextView
     private lateinit var tvPreview: TextView
     private lateinit var pbLoading: ProgressBar
 
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(150, TimeUnit.SECONDS)
+        .build()
     private val generating = AtomicBoolean(false)
 
     private var selectedRatio = 0
     private var selectedStyle = 0
     private var currentBitmap: Bitmap? = null
     private var currentPromptText = ""
+    private var lastIdea = ""
+    private var refImageUrl: String? = null
+
+    private val agnesBase = "https://apihub.agnes-ai.com/v1"
+    private val agnesKey = BuildConfig.AGNES_API_KEY
+    private val hfFluxBase = "https://black-forest-labs-flux-1-schnell.hf.space"
 
     private val ratios = listOf(
         Triple("1:1", 1024, 1024),
@@ -87,6 +104,16 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var worksDir: File
 
+    private val pickRef = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) uploadRefImage(uri) else Toast.makeText(this, "未选择图片", Toast.LENGTH_SHORT).show()
+    }
+
+    private enum class Provider(val label: String, val loadingText: String) {
+        AGNES("Agnes", "Agnes 高速引擎生成中..."),
+        HFFLUX("FLUX 免费源", "FLUX 免费引擎接力生成中..."),
+        POLLINATIONS("兜底源", "备用引擎兜底生成中...")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -98,6 +125,8 @@ class MainActivity : AppCompatActivity() {
         btnSave = findViewById(R.id.btnSave)
         btnRandom = findViewById(R.id.btnRandom)
         btnHistory = findViewById(R.id.btnHistory)
+        btnRef = findViewById(R.id.btnRef)
+        btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)
         tvStatus = findViewById(R.id.tvStatus)
         tvPreview = findViewById(R.id.tvPreview)
@@ -113,13 +142,28 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请输入中文描述", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            lastIdea = prompt
             generateImage(prompt)
         }
 
         btnRandom.setOnClickListener {
-            etPrompt.setText(randomIdeas[Random.nextInt(randomIdeas.size)])
-            val prompt = etPrompt.text.toString().trim()
-            generateImage(prompt)
+            val idea = randomIdeas[Random.nextInt(randomIdeas.size)]
+            etPrompt.setText(idea)
+            lastIdea = idea
+            generateImage(idea)
+        }
+
+        btnVariation.setOnClickListener {
+            if (lastIdea.isEmpty()) {
+                Toast.makeText(this, "先输入并生成一张图", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            generateImage(lastIdea)
+        }
+
+        btnRef.setOnClickListener {
+            if (generating.get()) return@setOnClickListener
+            pickRef.launch(ActivityResultContracts.PickVisualMedia.ImageOnly)
         }
 
         btnSave.setOnClickListener {
@@ -171,38 +215,45 @@ class MainActivity : AppCompatActivity() {
         setBusy(true)
 
         thread {
-            var englishIdea = idea
-            try {
-                runOnUiThread { tvStatus.text = "正在翻译成英文..." }
-                val translated = translateZhToEn(idea)
-                if (translated.isNotEmpty()) englishIdea = translated
-            } catch (e: Exception) {
-                runOnUiThread { tvStatus.text = "翻译失败，直接用原话生成" }
-            }
-
-            val enhancedPrompt = buildPrompt(englishIdea)
-            currentPromptText = enhancedPrompt
-
             val (_, w, h) = ratios[selectedRatio]
-            val encoded = URLEncoder.encode(enhancedPrompt, "UTF-8").replace("+", "%20")
-            val seed = Random.nextInt(100000)
-            val imageUrl = "https://image.pollinations.ai/prompt/$encoded?width=$w&height=$h&model=flux&enhance=true&nologo=true&seed=$seed"
+
+            runOnUiThread { tvStatus.text = "智能优化提示词..." }
+            val enhancedPrompt = polishPrompt(idea)
+            currentPromptText = enhancedPrompt
 
             runOnUiThread {
                 tvPreview.visibility = View.VISIBLE
                 tvPreview.text = "出图提示词：$enhancedPrompt"
             }
 
-            val bitmap = downloadImageWithRetry(imageUrl, maxAttempts = 4)
-            runOnUiThread {
+            val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
+
+            var bitmap: Bitmap? = null
+            var usedSource = ""
+            for (p in providers) {
+                runOnUiThread { tvStatus.text = p.loadingText }
+                bitmap = when (p) {
+                    Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, refImageUrl)
+                    Provider.HFFLUX -> generateWithHfFlux(enhancedPrompt, w, h)
+                    Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h)
+                }
                 if (bitmap != null) {
-                    currentBitmap = bitmap
-                    ivResult.setImageBitmap(bitmap)
-                    tvStatus.text = "生成成功！已存入“我的作品”"
+                    usedSource = p.label
+                    break
+                }
+            }
+
+            val finalBitmap = bitmap
+            val source = usedSource
+            runOnUiThread {
+                if (finalBitmap != null) {
+                    currentBitmap = finalBitmap
+                    ivResult.setImageBitmap(finalBitmap)
+                    tvStatus.text = "生成成功（$source）！已存入“我的作品”"
                     btnSave.isEnabled = true
-                    saveRecord(bitmap, idea, enhancedPrompt)
+                    saveRecord(finalBitmap, idea, enhancedPrompt)
                 } else {
-                    tvStatus.text = "生成失败：服务繁忙或网络超时，请稍后重试"
+                    tvStatus.text = "生成失败：所有引擎都忙或网络超时，请稍后重试"
                 }
                 setBusy(false)
                 generating.set(false)
@@ -210,7 +261,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildPrompt(englishIdea: String): String {
+    private fun polishPrompt(idea: String): String {
+        if (agnesKey.isNotEmpty()) {
+            try {
+                val body = JSONObject()
+                    .put("model", "agnes-2.0-flash")
+                    .put("max_tokens", 500)
+                    .put("messages", JSONArray().put(JSONObject()
+                        .put("role", "system")
+                        .put("content", "你是AI绘画提示词优化大师。把用户的中文描述或粗糙英文描述改写成一段高质量英文图像提示词：具体、有画面感、含灯光与质感描述。只输出优化后的英文提示词本身，不要解释不要引号。"))
+                        .put(JSONObject().put("role", "user").put("content", idea)))
+                val resp = postJson("$agnesBase/chat/completions", body)
+                val content = resp?.getJSONArray("choices")
+                    ?.getJSONObject(0)
+                    ?.getJSONObject("message")
+                    ?.getString("content")
+                if (!content.isNullOrBlank()) return content.trim().take(400)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        var englishIdea = idea
+        try {
+            val translated = translateZhToEn(idea)
+            if (translated.isNotEmpty()) englishIdea = translated
+        } catch (e: Exception) {
+        }
+        return buildLocalPrompt(englishIdea)
+    }
+
+    private fun buildLocalPrompt(englishIdea: String): String {
         val style = if (selectedStyle > 0) styleSuffixes[selectedStyle] else ""
         val quality = "8k resolution, highly detailed, sharp focus, masterpiece, best quality"
         val parts = mutableListOf(englishIdea)
@@ -219,39 +299,177 @@ class MainActivity : AppCompatActivity() {
         return parts.joinToString(", ").take(400)
     }
 
-    private fun translateZhToEn(text: String): String {
-        val q = URLEncoder.encode(text, "UTF-8")
-        val url = "https://api.mymemory.translated.net/get?q=$q&langpair=zh-CN|en"
-        val request = Request.Builder().url(url).build()
-        httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: return ""
-            val json = JSONObject(body)
-            return json.getJSONObject("responseData").getString("translatedText").trim()
+    private fun generateWithAgnes(prompt: String, w: Int, h: Int, refUrl: String?): Bitmap? {
+        if (agnesKey.isEmpty()) return null
+        return try {
+            val body = JSONObject()
+                .put("model", "agnes-image-2.1-flash")
+                .put("prompt", prompt)
+                .put("size", "${w}x${h}")
+            refUrl?.let { body.put("image", it) }
+            val resp = postJson("$agnesBase/images/generations", body)
+            val url = resp?.getJSONArray("data")?.getJSONObject(0)?.getString("url")
+            if (url.isNullOrEmpty()) return null
+            downloadBitmap(url)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
-    private fun downloadImageWithRetry(imageUrl: String, maxAttempts: Int): Bitmap? {
+    private fun generateWithHfFlux(prompt: String, w: Int, h: Int): Bitmap? {
+        return try {
+            val infoReq = Request.Builder().url("$hfFluxBase/gradio_api/info").build()
+            val infoText = httpClient.newCall(infoReq).execute().use { it.body?.string() } ?: return null
+            val epName = JSONObject(infoText).getJSONObject("named_endpoints").keys().next()
+            val params = JSONObject(infoText).getJSONObject("named_endpoints").getJSONObject(epName).getJSONArray("parameters")
+
+            val dataArr = JSONArray()
+            for (i in 0 until params.length()) {
+                val p = params.getJSONObject(i)
+                val name = p.optString("parameter_name")
+                when (name) {
+                    "prompt" -> dataArr.put(prompt)
+                    "width" -> dataArr.put(w)
+                    "height" -> dataArr.put(h)
+                    else -> {
+                        if (p.has("parameter_default") && !p.isNull("parameter_default")) {
+                            dataArr.put(p.get("parameter_default"))
+                        } else if (p.has("parameter_has_default") && p.getBoolean("parameter_has_default")) {
+                            dataArr.put(p.get("parameter_default"))
+                        } else {
+                            dataArr.put("")
+                        }
+                    }
+                }
+            }
+
+            val submitBody = JSONObject().put("data", dataArr).toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val submitReq = Request.Builder()
+                .url("$hfFluxBase/gradio_api/call/$epName")
+                .post(submitBody)
+                .build()
+            val eventId = httpClient.newCall(submitReq).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                JSONObject(resp.body?.string() ?: return null).getString("event_id")
+            }
+
+            var resultUrl: String? = null
+            for (attempt in 0 until 60) {
+                Thread.sleep(2000)
+                val pollReq = Request.Builder().url("$hfFluxBase/gradio_api/call/$epName/$eventId").build()
+                val text = httpClient.newCall(pollReq).execute().use { it.body?.string() } ?: continue
+                val idx = text.lastIndexOf("data: ")
+                if (idx >= 0) {
+                    val dataText = text.substring(idx + 6).trim()
+                    try {
+                        val arr = JSONArray(dataText)
+                        if (arr.length() > 0) {
+                            val first = arr.getJSONObject(0)
+                            first.optString("url").takeIf { it.isNotEmpty() }?.let { resultUrl = it }
+                            break
+                        }
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+            if (resultUrl == null) return null
+            downloadBitmap(resultUrl)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun generateWithPollinations(prompt: String, w: Int, h: Int): Bitmap? {
+        return try {
+            val encoded = URLEncoder.encode(prompt, "UTF-8").replace("+", "%20")
+            val seed = Random.nextInt(100000)
+            val imageUrl = "https://image.pollinations.ai/prompt/$encoded?width=$w&height=$h&model=flux&enhance=true&nologo=true&seed=$seed"
+            downloadBitmap(imageUrl)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun postJson(url: String, json: JSONObject): JSONObject? {
+        val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder().url(url)
+            .header("Authorization", "Bearer $agnesKey")
+            .post(body)
+            .build()
+        return httpClient.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) null else JSONObject(resp.body?.string() ?: return null)
+        }
+    }
+
+    private fun downloadBitmap(imageUrl: String): Bitmap? {
         var attempt = 0
-        while (attempt < maxAttempts) {
+        while (attempt < 4) {
             attempt++
             try {
-                if (attempt > 1) {
-                    runOnUiThread { tvStatus.text = "服务繁忙，自动重试中 ($attempt/$maxAttempts)..." }
-                }
-                val request = Request.Builder().url(imageUrl).build()
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw RuntimeException("HTTP ${response.code}")
-                    response.body?.byteStream()?.use { stream ->
-                        val bitmap = BitmapFactory.decodeStream(stream)
-                        if (bitmap != null) return bitmap
+                val req = Request.Builder().url(imageUrl).build()
+                val resp = httpClient.newCall(req).execute()
+                resp.use {
+                    if (!it.isSuccessful) throw RuntimeException("HTTP ${it.code}")
+                    it.body?.byteStream()?.use { stream ->
+                        val bm = BitmapFactory.decodeStream(stream)
+                        if (bm != null) return bm
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            if (attempt < maxAttempts) Thread.sleep(2000L * attempt)
+            if (attempt < 4) Thread.sleep(1500L * attempt)
         }
         return null
+    }
+
+    private fun translateZhToEn(text: String): String {
+        val q = URLEncoder.encode(text, "UTF-8")
+        val url = "https://api.mymemory.translated.net/get?q=$q&langpair=zh-CN|en"
+        val request = Request.Builder().url(url).build()
+        return httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: return ""
+            if (!response.isSuccessful) return ""
+            val json = JSONObject(body)
+            json.getJSONObject("responseData").optString("translatedText", "").trim()
+        }
+    }
+
+    private fun uploadRefImage(uri: Uri) {
+        thread {
+            runOnUiThread { tvStatus.text = "读取图片并上传（作为参考图）..." }
+            try {
+                val cacheRef = File(cacheDir, "ref_${System.currentTimeMillis()}.jpg")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(cacheRef).use { output -> input.copyTo(output) }
+                }
+                val mediaType = "image/jpeg".toMediaType()
+                val fileBody = cacheRef.asRequestBody(mediaType)
+                val multipart = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("reqtype", "fileupload")
+                    .addFormDataPart("fileToUpload", cacheRef.name, fileBody)
+                    .build()
+                val req = Request.Builder().url("https://catbox.moe/user/api.php").post(multipart).build()
+                val urlText = httpClient.newCall(req).execute().use { it.body?.string()?.trim() }
+                if (urlText != null && urlText.startsWith("http")) {
+                    refImageUrl = urlText
+                    runOnUiThread {
+                        tvStatus.text = "参考图已就绪：生图时将按此图风格重绘"
+                        btnRef.text = "✅ 参考图已选（点击更换）"
+                    }
+                } else {
+                    runOnUiThread { tvStatus.text = "参考图上传失败，请重试" }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread { tvStatus.text = "参考图上传失败：${e.message}" }
+            }
+        }
     }
 
     private fun saveRecord(bitmap: Bitmap, idea: String, englishPrompt: String) {
@@ -303,6 +521,8 @@ class MainActivity : AppCompatActivity() {
     private fun setBusy(busy: Boolean) {
         btnGenerate.isEnabled = !busy
         btnRandom.isEnabled = !busy
+        btnVariation.isEnabled = !busy
+        btnRef.isEnabled = !busy
         pbLoading.visibility = if (busy) View.VISIBLE else View.GONE
         if (!busy) btnSave.isEnabled = currentBitmap != null
     }
