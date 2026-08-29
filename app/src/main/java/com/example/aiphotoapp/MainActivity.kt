@@ -204,6 +204,7 @@ class MainActivity : AppCompatActivity() {
         llGallery = findViewById(R.id.llGallery)
 
         buildChips(findViewById(R.id.llRatio), ratios.map { it.first }) { selectedRatio = it }
+        buildChips(findViewById(R.id.llImgRatio), ratios.map { it.first }) { selectedRatio = it }
         buildChips(findViewById(R.id.llStyle), styleLabels) { selectedStyle = it }
         renderChipSelection()
 
@@ -369,7 +370,7 @@ class MainActivity : AppCompatActivity() {
             chip.textSize = 12f
             chip.setPadding(0, 0, 0, 0)
             chip.setOnClickListener {
-                if (container.id == R.id.llRatio) selectedRatio = index else selectedStyle = index
+                if (container.id == R.id.llRatio || container.id == R.id.llImgRatio) selectedRatio = index else selectedStyle = index
                 renderChipSelection()
                 onSelect(index)
             }
@@ -386,11 +387,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderChipSelection() {
-        val ratioChips = findViewById<LinearLayout>(R.id.llRatio)
-        for (i in 0 until ratioChips.childCount) {
-            val chip = ratioChips.getChildAt(i) as Button
-            chip.setBackgroundResource(if (i == selectedRatio) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
-            chip.setTextColor(if (i == selectedRatio) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
+        for (id in listOf(R.id.llRatio, R.id.llImgRatio)) {
+            val ratioChips = findViewById<LinearLayout>(id)
+            for (i in 0 until ratioChips.childCount) {
+                val chip = ratioChips.getChildAt(i) as Button
+                chip.setBackgroundResource(if (i == selectedRatio) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+                chip.setTextColor(if (i == selectedRatio) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
+            }
         }
         val styleChips = findViewById<LinearLayout>(R.id.llStyle)
         for (i in 0 until styleChips.childCount) {

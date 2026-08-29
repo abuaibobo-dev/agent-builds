@@ -108,7 +108,7 @@
                             android:layout_weight="1"
                             android:text="开始批量"
                             android:textColor="@color/chip_selected_text"
-                            android:backgroundTint="@color/text_primary"
+                            android:background="@drawable/bg_btn_primary"
                             android:textSize="14sp"
                             android:textStyle="bold"
                             android:stateListAnimator="@null"/>
@@ -222,7 +222,7 @@
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/chip_selected_text"
-                    android:backgroundTint="@color/text_primary"
+                    android:background="@drawable/bg_btn_primary"
                     android:stateListAnimator="@null"/>
 
                 <Button
@@ -388,6 +388,21 @@
                     android:textSize="15sp"
                     android:stateListAnimator="@null"/>
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="比例"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:layout_marginTop="18dp"
+                    android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:id="@+id/llImgRatio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"/>
+
                 <FrameLayout
                     android:id="@+id/frameImgRefThumb"
                     android:layout_width="112dp"
@@ -440,7 +455,7 @@
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/chip_selected_text"
-                    android:backgroundTint="@color/text_primary"
+                    android:background="@drawable/bg_btn_primary"
                     android:stateListAnimator="@null"/>
 
                 <LinearLayout
@@ -641,10 +656,12 @@
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
+        android:background="@android:color/transparent"
+        android:elevation="0dp"
         app:itemIconTint="@color/nav_item_color"
         app:itemTextColor="@color/nav_item_color"
-        app:labelVisibilityMode="labeled"
+        app:itemBackground="@android:color/transparent"
+        app:labelVisibilityMode="unlabeled"
         app:menu="@menu/bottom_nav"/>
 
 </LinearLayout>
