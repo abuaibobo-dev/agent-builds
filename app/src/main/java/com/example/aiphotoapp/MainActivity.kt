@@ -2,6 +2,7 @@ package com.example.aiphotoapp
 
 import android.content.ContentValues
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Environment
@@ -12,7 +13,6 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import coil.load
 import java.io.OutputStream
 import java.net.URLEncoder
 import kotlin.concurrent.thread
@@ -28,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSave: Button
     private lateinit var ivResult: ImageView
     private lateinit var tvStatus: TextView
-    private var currentImageUrl: String = ""
     private val httpClient = OkHttpClient()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private fun generateImage(basePrompt: String) {
         btnGenerate.isEnabled = false
         btnSave.isEnabled = false
+        ivResult.setImageDrawable(null)
 
         thread {
             var english = basePrompt
@@ -73,28 +73,23 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { tvStatus.text = "翻译失败，直接用原话生成" }
             }
 
-            runOnUiThread { tvStatus.text = "已翻译，正在云端生成高画质图像，请稍候..." }
-
             val enhancedPrompt = "$english, 8k resolution, highly detailed, realistic, masterpiece, best quality"
             val encodedPrompt = URLEncoder.encode(enhancedPrompt, "UTF-8")
             val seed = Random.nextInt(100000)
+            val imageUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true&seed=$seed"
 
-            currentImageUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true&seed=$seed"
+            runOnUiThread { tvStatus.text = "正在生成，请稍候..." }
 
+            val bitmap = downloadImageWithRetry(imageUrl, maxAttempts = 4)
             runOnUiThread {
-                ivResult.load(currentImageUrl) {
-                    crossfade(true)
-                    listener(
-                        onSuccess = { _, _ ->
-                            tvStatus.text = "生成成功！"
-                            btnGenerate.isEnabled = true
-                            btnSave.isEnabled = true
-                        },
-                        onError = { _, _ ->
-                            tvStatus.text = "生成失败，请重试或检查网络"
-                            btnGenerate.isEnabled = true
-                        }
-                    )
+                if (bitmap != null) {
+                    ivResult.setImageBitmap(bitmap)
+                    tvStatus.text = "生成成功！"
+                    btnGenerate.isEnabled = true
+                    btnSave.isEnabled = true
+                } else {
+                    tvStatus.text = "生成失败：服务繁忙或网络超时，请稍后重试"
+                    btnGenerate.isEnabled = true
                 }
             }
         }
@@ -109,6 +104,34 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(body)
             return json.getJSONObject("responseData").getString("translatedText").trim()
         }
+    }
+
+    private fun downloadImageWithRetry(imageUrl: String, maxAttempts: Int): Bitmap? {
+        var attempt = 0
+        while (attempt < maxAttempts) {
+            attempt++
+            try {
+                if (attempt > 1) {
+                    runOnUiThread { tvStatus.text = "服务繁忙，自动重试中 ($attempt/$maxAttempts)..." }
+                }
+                val request = Request.Builder().url(imageUrl).build()
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw RuntimeException("HTTP ${response.code}")
+                    }
+                    response.body?.byteStream()?.use { stream ->
+                        val bitmap = BitmapFactory.decodeStream(stream)
+                        if (bitmap != null) return bitmap
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            if (attempt < maxAttempts) {
+                Thread.sleep(2000L * attempt)
+            }
+        }
+        return null
     }
 
     private fun saveImageToGallery() {
