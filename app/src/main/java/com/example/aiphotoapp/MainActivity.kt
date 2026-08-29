@@ -357,7 +357,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             var resultUrl: String? = null
-            var finalUrl: String? = null
             for (attempt in 0 until 60) {
                 Thread.sleep(2000)
                 val pollReq = Request.Builder().url("$hfFluxBase/gradio_api/call/$epName/$eventId").build()
@@ -376,8 +375,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            if (resultUrl == null) return null
-            finalUrl = resultUrl
+            val finalUrl = resultUrl ?: return null
             downloadBitmap(finalUrl)
         } catch (e: Exception) {
             e.printStackTrace()
