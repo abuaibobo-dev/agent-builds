@@ -19,7 +19,7 @@
         android:id="@+id/etPrompt"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="输入英文提示词 (如: cyberpunk city, 4k)"
+        android:hint="输入中文，描述你想要什么图 (如：夕阳下的海边小城)"
         android:textColorHint="#888888"
         android:textColor="#FFFFFF"
         android:background="#333333"

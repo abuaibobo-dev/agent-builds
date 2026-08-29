@@ -15,7 +15,11 @@ import androidx.appcompat.app.AppCompatActivity
 import coil.load
 import java.io.OutputStream
 import java.net.URLEncoder
+import kotlin.concurrent.thread
 import kotlin.random.Random
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -25,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivResult: ImageView
     private lateinit var tvStatus: TextView
     private var currentImageUrl: String = ""
+    private val httpClient = OkHttpClient()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +44,7 @@ class MainActivity : AppCompatActivity() {
         btnGenerate.setOnClickListener {
             val prompt = etPrompt.text.toString().trim()
             if (prompt.isEmpty()) {
-                Toast.makeText(this, "请输入提示词", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "请输入中文描述", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             generateImage(prompt)
@@ -51,31 +56,58 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun generateImage(basePrompt: String) {
-        tvStatus.text = "正在云端生成高画质图像，请稍候..."
         btnGenerate.isEnabled = false
         btnSave.isEnabled = false
-        
-        // 自动加入画质增强的提示词，确保出图是 4K/真实质感
-        val enhancedPrompt = "$basePrompt, 8k resolution, highly detailed, realistic, masterpiece, best quality"
-        val encodedPrompt = URLEncoder.encode(enhancedPrompt, "UTF-8")
-        val seed = Random.nextInt(100000)
-        
-        // 核心：调用免费无限制的 Pollinations 接口
-        currentImageUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true&seed=$seed"
 
-        ivResult.load(currentImageUrl) {
-            crossfade(true)
-            listener(
-                onSuccess = { _, _ ->
-                    tvStatus.text = "生成成功！"
-                    btnGenerate.isEnabled = true
-                    btnSave.isEnabled = true
-                },
-                onError = { _, _ ->
-                    tvStatus.text = "生成失败，请重试或检查网络"
-                    btnGenerate.isEnabled = true
+        thread {
+            var english = basePrompt
+            try {
+                runOnUiThread { tvStatus.text = "正在翻译成英文..." }
+                val translated = translateZhToEn(basePrompt)
+                if (translated.isNotEmpty()) {
+                    english = translated
+                } else {
+                    runOnUiThread { tvStatus.text = "翻译失败，直接用原话生成" }
                 }
-            )
+            } catch (e: Exception) {
+                runOnUiThread { tvStatus.text = "翻译失败，直接用原话生成" }
+            }
+
+            runOnUiThread { tvStatus.text = "已翻译，正在云端生成高画质图像，请稍候..." }
+
+            val enhancedPrompt = "$english, 8k resolution, highly detailed, realistic, masterpiece, best quality"
+            val encodedPrompt = URLEncoder.encode(enhancedPrompt, "UTF-8")
+            val seed = Random.nextInt(100000)
+
+            currentImageUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true&seed=$seed"
+
+            runOnUiThread {
+                ivResult.load(currentImageUrl) {
+                    crossfade(true)
+                    listener(
+                        onSuccess = { _, _ ->
+                            tvStatus.text = "生成成功！"
+                            btnGenerate.isEnabled = true
+                            btnSave.isEnabled = true
+                        },
+                        onError = { _, _ ->
+                            tvStatus.text = "生成失败，请重试或检查网络"
+                            btnGenerate.isEnabled = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun translateZhToEn(text: String): String {
+        val q = URLEncoder.encode(text, "UTF-8")
+        val url = "https://api.mymemory.translated.net/get?q=$q&langpair=zh-CN|en"
+        val request = Request.Builder().url(url).build()
+        httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: return ""
+            val json = JSONObject(body)
+            return json.getJSONObject("responseData").getString("translatedText").trim()
         }
     }
 
@@ -88,7 +120,7 @@ class MainActivity : AppCompatActivity() {
         val bitmap = drawable.bitmap
 
         val filename = "AI_Photo_${System.currentTimeMillis()}.jpg"
-        
+
         var outputStream: OutputStream? = null
         try {
             val contentValues = ContentValues().apply {
