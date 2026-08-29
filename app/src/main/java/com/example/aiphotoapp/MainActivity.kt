@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
@@ -163,7 +164,7 @@ class MainActivity : AppCompatActivity() {
 
         btnRef.setOnClickListener {
             if (generating.get()) return@setOnClickListener
-            pickRef.launch(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            pickRef.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
         btnSave.setOnClickListener {
@@ -356,6 +357,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             var resultUrl: String? = null
+            var finalUrl: String? = null
             for (attempt in 0 until 60) {
                 Thread.sleep(2000)
                 val pollReq = Request.Builder().url("$hfFluxBase/gradio_api/call/$epName/$eventId").build()
@@ -375,7 +377,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             if (resultUrl == null) return null
-            downloadBitmap(resultUrl)
+            finalUrl = resultUrl
+            downloadBitmap(finalUrl)
         } catch (e: Exception) {
             e.printStackTrace()
             null
