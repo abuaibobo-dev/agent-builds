@@ -78,7 +78,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvImgRefClear: TextView
     private lateinit var tvImgStatus: TextView
     private lateinit var pbImgLoading: ProgressBar
-    private lateinit var llImgEditMode: LinearLayout
     private lateinit var galleryRecycler: RecyclerView
 
     private val httpClient = OkHttpClient.Builder()
@@ -208,7 +207,6 @@ class MainActivity : AppCompatActivity() {
         tvImgRefClear = findViewById(R.id.tvImgRefClear)
         tvImgStatus = findViewById(R.id.tvImgStatus)
         pbImgLoading = findViewById(R.id.pbImgLoading)
-        llImgEditMode = findViewById(R.id.llImgEditMode)
         galleryRecycler = findViewById(R.id.tab_gallery)
         galleryRecycler.layoutManager = StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
 
@@ -329,9 +327,6 @@ class MainActivity : AppCompatActivity() {
             setChipDefault(llRate, idx)
         }
         setChipDefault(llRate, 1)
-        buildChips(llImgEditMode, listOf("抠背景", "换背景", "换衣服", "改衣服颜色")) { idx ->
-            selectedEditMode = ImageEditPrompt.Mode.values()[idx]
-        }
 
         btnBatchStart.setOnClickListener {
             if (batchRunning.get()) return@setOnClickListener
@@ -752,6 +747,33 @@ class MainActivity : AppCompatActivity() {
             setImageBitmap(source)
         }
         root.addView(image)
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        buildChips(modeRow, listOf("抠背景", "换背景", "换衣服", "改衣服颜色")) { idx ->
+            selectedEditMode = ImageEditPrompt.Mode.values()[idx]
+        }
+        setChipDefault(modeRow, selectedEditMode.ordinal)
+        root.addView(modeRow)
+        val editPrompt = EditText(this).apply {
+            hint = "描述修改要求，例如：换成雪山背景"
+            setTextColor(0xFFFFFFFF.toInt())
+            setHintTextColor(0xFFB3B3B3.toInt())
+            setBackgroundResource(R.drawable.bg_card)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            minLines = 1
+            maxLines = 3
+        }
+        root.addView(editPrompt, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
+        val applyEdit = Button(this).apply {
+            text = "进入编辑"
+            setTextColor(0xFF000000.toInt())
+            setBackgroundResource(R.drawable.bg_btn_primary)
+            backgroundTintList = null
+        }
+        root.addView(applyEdit, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply {
+            topMargin = dp(8)
+        })
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val upscale = Button(this).apply {
             text = "本地超分"
@@ -780,6 +802,19 @@ class MainActivity : AppCompatActivity() {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             setContentView(root)
             window?.setBackgroundDrawableResource(android.R.color.black)
+        }
+        applyEdit.setOnClickListener {
+            val prompt = editPrompt.text.toString().trim()
+            if (prompt.isEmpty()) {
+                Toast.makeText(this, "请输入修改要求", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val editFile = File(cacheDir, "edit_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(editFile).use { source.compress(Bitmap.CompressFormat.JPEG, 94, it) }
+            dialog.dismiss()
+            showTab(tabImg2img)
+            etImgPrompt.setText(prompt)
+            uploadRefImage(Uri.fromFile(editFile), reverse = false)
         }
         upscale.setOnClickListener {
             if (!upscaling.get()) {
@@ -1037,7 +1072,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun uploadRefImage(uri: Uri) {
+    private fun uploadRefImage(uri: Uri, reverse: Boolean = true) {
         thread {
             runOnUiThread { tvImgStatus.text = "解析参考图..." }
             try {
@@ -1068,7 +1103,7 @@ class MainActivity : AppCompatActivity() {
                         btnRef.text = "已选参考图"
                         tvImgStatus.text = "参考图就绪，正在反推提示词..."
                     }
-                    reversePrompt(cacheRef)
+                    if (reverse) reversePrompt(cacheRef)
                 } else {
                     runOnUiThread {
                         btnRef.text = "选参考图（从相册）"
