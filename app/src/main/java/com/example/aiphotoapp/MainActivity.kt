@@ -80,7 +80,6 @@ class MainActivity : AppCompatActivity() {
         .readTimeout(150, TimeUnit.SECONDS)
         .build()
     private val generating = AtomicBoolean(false)
-    private val generating = AtomicBoolean(false)
     private val polishing = AtomicBoolean(false)
     private val upscaling = AtomicBoolean(false)
 
@@ -482,8 +481,9 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { status.text = "超分失败：引擎忙或超时" }
                     return@thread
                 }
+                val fetchedUrl = outUrl
 
-                val imgBytes = httpClient.newCall(Request.Builder().url(outUrl).build())
+                val imgBytes = httpClient.newCall(Request.Builder().url(fetchedUrl).build())
                     .execute().use { it.body?.bytes() }
                 if (imgBytes == null) {
                     runOnUiThread { status.text = "超分结果下载失败" }
@@ -848,7 +848,7 @@ class MainActivity : AppCompatActivity() {
                 desc = resp?.getJSONArray("choices")?.getJSONObject(0)
                     ?.getJSONObject("message")?.optString("reasoning_content", "")
             }
-            if (!desc.isNullOrBlank() && desc.length() > 12) {
+            if (!desc.isNullOrBlank() && desc.length > 12) {
                 val finalDesc = desc.trim()
                 runOnUiThread {
                     etImgPrompt.setText(finalDesc)
