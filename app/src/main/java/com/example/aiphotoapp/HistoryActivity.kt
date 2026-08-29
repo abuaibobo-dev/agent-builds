@@ -1,12 +1,14 @@
 package com.example.aiphotoapp
 
-import android.app.AlertDialog
+import android.app.Dialog
 import android.content.ContentValues
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.Gravity
 import android.view.ViewGroup
+import android.view.Window
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -176,11 +178,37 @@ class HistoryActivity : AppCompatActivity() {
         btnRow.addView(btnDelete)
         view.addView(btnRow)
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("作品详情")
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .create()
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        dialog.setContentView(view)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
+        view.setPadding(dp(18), dp(16), dp(18), dp(12))
+
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 0, 8, 8)
+        }
+        titleRow.addView(TextView(this).apply {
+            text = "作品详情"
+            textSize = 17f
+            setTextColor(0xFFFFFFFF.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        titleRow.addView(Button(this).apply {
+            text = "关闭"
+            textSize = 13f
+            setTextColor(0xFFB3B3B3.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+            setPadding(24, 8, 24, 8)
+            setOnClickListener { dialog.dismiss() }
+        })
+        view.addView(titleRow, 0)
 
         btnRedraw.setOnClickListener {
             getSharedPreferences("gallery", MODE_PRIVATE)

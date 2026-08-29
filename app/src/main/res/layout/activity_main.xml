@@ -42,91 +42,7 @@
                     android:layout_marginTop="2dp"
                     android:layout_marginBottom="20dp"/>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_card"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:layout_marginBottom="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="AI 裂变批处理"
-                        android:textColor="@color/text_primary"
-                        android:textSize="16sp"
-                        android:textStyle="bold"/>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="给一个主题，AI 自动裂变创意并持续出图，直到你叫停"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_tertiary"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="12dp"/>
-
-                    <EditText
-                        android:id="@+id/etBatchTheme"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="主题方向，如：赛博朋克都市 / 水墨山水"
-                        android:textColorHint="@color/text_tertiary"
-                        android:textColor="@color/text_primary"
-                        android:background="@drawable/bg_card"
-                        android:padding="12dp"
-                        android:minLines="1"
-                        android:maxLines="2"
-                        android:gravity="top" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="速率"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:layout_marginTop="12dp"
-                        android:layout_marginBottom="8dp"/>
-
-                    <LinearLayout
-                        android:id="@+id/llRate"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"/>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginTop="14dp">
-
-                        <Button
-                            android:id="@+id/btnBatchStart"
-                            android:layout_width="0dp"
-                            android:layout_height="44dp"
-                            android:layout_weight="1"
-                            android:text="开始批量"
-                            android:textColor="@color/chip_selected_text"
-                            android:backgroundTint="@color/text_primary"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:stateListAnimator="@null"/>
-
-                        <Button
-                            android:id="@+id/btnBatchStop"
-                            android:layout_width="0dp"
-                            android:layout_height="44dp"
-                            android:layout_weight="1"
-                            android:layout_marginStart="10dp"
-                            android:text="停止"
-                            android:textColor="@color/text_primary"
-                            android:background="@drawable/bg_btn_outline"
-                            android:textSize="14sp"
-                            android:stateListAnimator="@null"
-                            android:enabled="false"/>
-
-                    </LinearLayout>
+                
 
                     <TextView
                         android:id="@+id/tvBatchStatus"
@@ -175,6 +91,29 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"/>
 
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="避免 AI 味（真实感）"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp"/>
+
+                        <Switch
+                            android:id="@+id/swAntiAi"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:showText="false"/>
+
+                    </LinearLayout>
+
                 </LinearLayout>
 
                 <EditText
@@ -200,7 +139,7 @@
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/chip_selected_text"
-                    android:backgroundTint="@color/text_primary"
+                    android:background="@drawable/bg_btn_primary"
                     android:stateListAnimator="@null"/>
 
                 <Button
@@ -320,6 +259,92 @@
                     android:textSize="14sp"
                     android:stateListAnimator="@null"
                     android:enabled="false"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:layout_marginBottom="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="AI 裂变批处理"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="给一个标签，AI 自动扩写成提示词持续出图，直到你叫停"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_tertiary"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginBottom="12dp"/>
+
+                    <EditText
+                        android:id="@+id/etBatchTheme"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="输入一个标签，AI 扩写成具体提示词批量出图，如：猫"
+                        android:textColorHint="@color/text_tertiary"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/bg_card"
+                        android:padding="12dp"
+                        android:minLines="1"
+                        android:maxLines="2"
+                        android:gravity="top" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="速率"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:layout_marginTop="12dp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <LinearLayout
+                        android:id="@+id/llRate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="14dp">
+
+                        <Button
+                            android:id="@+id/btnBatchStart"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:text="开始批量"
+                            android:textColor="@color/chip_selected_text"
+                            android:background="@drawable/bg_btn_primary"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:stateListAnimator="@null"/>
+
+                        <Button
+                            android:id="@+id/btnBatchStop"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="10dp"
+                            android:text="停止"
+                            android:textColor="@color/text_primary"
+                            android:background="@drawable/bg_btn_outline"
+                            android:textSize="14sp"
+                            android:stateListAnimator="@null"
+                            android:enabled="false"/>
+
+                    </LinearLayout>
 
             </LinearLayout>
         </ScrollView>
@@ -619,9 +644,11 @@
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
+        android:background="@android:color/transparent"
+        app:elevation="0dp"
         app:itemIconTint="@color/nav_item_color"
         app:itemTextColor="@color/nav_item_color"
+        app:itemBackground="@android:color/transparent"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav"/>
 

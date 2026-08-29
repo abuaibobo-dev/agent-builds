@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -99,6 +100,7 @@ class MainActivity : AppCompatActivity() {
 
     private var selectedRatio = 0
     private var selectedStyle = 0
+    private var antiAi = false
     private var currentBitmap: Bitmap? = null
     private var imgCurrentBitmap: Bitmap? = null
     private var currentPromptText = ""
@@ -118,7 +120,7 @@ class MainActivity : AppCompatActivity() {
         Triple("3:4", 864, 1152)
     )
 
-    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实", "去AI味")
+    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实")
     private val styleSuffixes = listOf(
         "",
         "cyberpunk, neon lights, futuristic city",
@@ -126,9 +128,9 @@ class MainActivity : AppCompatActivity() {
         "oil painting, rich brushstrokes, impressionist",
         "anime style, vibrant colors, studio quality",
         "pixel art style, retro game",
-        "photorealistic, shot on camera, sharp details",
-        "candid documentary photo, natural skin texture, subtle film grain, muted natural colors, realistic imperfections, 35mm analog film look, honest natural lighting, no CGI, no airbrushing, no oversaturation"
+        "photorealistic, shot on camera, sharp details"
     )
+    private val antiAiSuffix = "candid documentary photo, natural skin texture, subtle film grain, muted natural colors, realistic imperfections, 35mm analog film look, honest natural lighting, no CGI, no airbrushing, no oversaturation"
 
     private val randomIdeas = listOf(
         "夕阳下的海边小城，海鸥飞过",
@@ -180,6 +182,7 @@ class MainActivity : AppCompatActivity() {
         btnBatchStop = findViewById(R.id.btnBatchStop)
         tvBatchStatus = findViewById(R.id.tvBatchStatus)
         llRate = findViewById(R.id.llRate)
+        findViewById<android.widget.Switch>(R.id.swAntiAi).setOnCheckedChangeListener { _, checked -> antiAi = checked }
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)
@@ -218,16 +221,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnClearHistory).setOnClickListener {
-            android.app.AlertDialog.Builder(this)
-                .setTitle("清空我的作品")
-                .setMessage("确定删除全部作品？此操作不可恢复。")
-                .setPositiveButton("清空") { _, _ ->
-                    worksDir.listFiles()?.forEach { it.delete() }
-                    loadGallery()
-                    Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
-                }
-                .setNegativeButton("取消", null)
-                .show()
+            showConfirm("清空我的作品", "确定删除全部作品？此操作不可恢复。") {
+                worksDir.listFiles()?.forEach { it.delete() }
+                loadGallery()
+                Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
+            }
         }
 
         btnGenerate.setOnClickListener {
@@ -300,15 +298,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnUpscale.setOnClickListener {
-            val bmp = currentBitmap
-            if (bmp == null || upscaling.get() || generating.get()) return@setOnClickListener
-            upscale4k(bmp, isImg = false)
+            if (upscaling.get() || generating.get()) return@setOnClickListener
+            upscale4k(currentBitmap ?: return@setOnClickListener, isImg = false)
         }
 
         btnImgUpscale.setOnClickListener {
-            val bmp = imgCurrentBitmap
-            if (bmp == null || upscaling.get() || generating.get()) return@setOnClickListener
-            upscale4k(bmp, isImg = true)
+            if (upscaling.get() || generating.get()) return@setOnClickListener
+            upscale4k(imgCurrentBitmap ?: return@setOnClickListener, isImg = true)
         }
 
         buildChips(llRate, listOf("慢", "中", "快")) { idx ->
@@ -382,6 +378,131 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showConfirm(
+        title: String,
+        message: String,
+        positiveText: String = "确定",
+        negativeText: String = "取消",
+        onPositive: () -> Unit
+    ) {
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(14))
+        }
+        view.addView(TextView(this).apply {
+            text = title
+            textSize = 17f
+            setTextColor(0xFFFFFFFF.toInt())
+        })
+        view.addView(TextView(this).apply {
+            text = message
+            textSize = 14f
+            setTextColor(0xFFB3B3B3.toInt())
+            setPadding(0, dp(10), 0, dp(6))
+        })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun makeBtn(label: String, weight: Float, onClick: Runnable): Button {
+            return Button(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundResource(R.drawable.bg_btn_outline)
+                stateListAnimator = null
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+                setOnClickListener { onClick.run() }
+            }
+        }
+        row.addView(makeBtn(negativeText, 1f, Runnable { dialog.dismiss() }))
+        row.addView(makeBtn(positiveText, 1f, Runnable {
+            dialog.dismiss()
+            onPositive()
+        }))
+        view.addView(row)
+        dialog.setContentView(view)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(android.view.Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
+        dialog.show()
+    }
+
+    private fun showConfirmChoices(
+        title: String,
+        message: String,
+        labels: List<String>,
+        onPositive: () -> Unit,
+        onNegative: () -> Unit
+    ) {
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(14))
+        }
+        view.addView(TextView(this).apply {
+            text = title
+            textSize = 17f
+            setTextColor(0xFFFFFFFF.toInt())
+        })
+        view.addView(TextView(this).apply {
+            text = message
+            textSize = 14f
+            setTextColor(0xFFB3B3B3.toInt())
+            setPadding(0, dp(10), 0, dp(6))
+        })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(Button(this).apply {
+            text = labels.getOrElse(2) { "取消" }
+            textSize = 14f
+            setTextColor(0xFFB3B3B3.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, dp(8), 0)
+            }
+            setOnClickListener { dialog.dismiss() }
+        })
+        row.addView(Button(this).apply {
+            text = labels.getOrElse(1) { "开新批次" }
+            textSize = 14f
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, dp(8), 0)
+            }
+            setOnClickListener {
+                dialog.dismiss()
+                onNegative()
+            }
+        })
+        row.addView(Button(this).apply {
+            text = labels.getOrElse(0) { "继续" }
+            textSize = 14f
+            setTextColor(0xFF000000.toInt())
+            setBackgroundResource(R.drawable.bg_chip_selected)
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                dialog.dismiss()
+                onPositive()
+            }
+        })
+        view.addView(row)
+        dialog.setContentView(view)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(android.view.Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
+        dialog.show()
+    }
+
     private fun renderChipSelection() {
         val ratioChips = findViewById<LinearLayout>(R.id.llRatio)
         for (i in 0 until ratioChips.childCount) {
@@ -403,18 +524,19 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "先输入主题方向", Toast.LENGTH_SHORT).show()
             return
         }
+        if (isSensitive(theme)) {
+            Toast.makeText(this, "主题含违禁内容，换个方向", Toast.LENGTH_LONG).show()
+            return
+        }
         val saved = loadBatchState()
         if (saved != null && saved.optInt("done", 0) > 0) {
             val msg = "上次任务「${saved.optString("theme")}」已完成 ${saved.optInt("done")} 张，未结束。"
-            android.app.AlertDialog.Builder(this)
-                .setTitle("发现未完成任务")
-                .setMessage("$msg\n\n继续跑，还是开新批次？")
-                .setPositiveButton("继续") { _, _ -> beginBatch(saved, theme) }
-                .setNegativeButton("开新批次") { _, _ -> beginBatch(null, theme) }
-                .setNeutralButton("取消", null)
-                .show()
+            showConfirmChoices("发现未完成任务", "$msg\n\n继续跑，还是开新批次？",
+                listOf("继续", "开新批次", "取消"),
+                onPositive = { beginBatch(saved, theme) },
+                onNegative = { beginBatch(null, theme) })
         } else {
-            beginBatch(saved, theme)
+            beginBatch(null, theme)
         }
     }
 
@@ -444,63 +566,77 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun batchWorker() {
-        while (!batchStopRequested) {
-            try {
-                if (batchPool.isEmpty()) {
-                    runOnUiThread { tvBatchStatus.text = "裂变新创意中…" }
-                    topUpPool()
-                    persistBatch()
+        try {
+            while (!batchStopRequested) {
+                try {
                     if (batchPool.isEmpty()) {
-                        runOnUiThread { tvBatchStatus.text = "创意源不可用，已暂停；点“停止”结束" }
-                        break
+                        runOnUiThread { tvBatchStatus.text = "裂变新创意中…" }
+                        topUpPool()
+                        persistBatch()
+                        if (batchPool.isEmpty()) {
+                            runOnUiThread { tvBatchStatus.text = "创意源不可用，已暂停；点“停止”结束" }
+                            break
+                        }
                     }
-                }
-                val idea = batchPool.removeAt(0)
-                val bitmap = generateBatchImage(idea)
-                if (bitmap != null) {
-                    batchDoneCount++
-                    runOnUiThread {
-                        tvBatchStatus.text = "已完成 $batchDoneCount 张 · 池内 ${batchPool.size} · “$idea”"
-                        ivResult.setImageBitmap(bitmap)
+                    val idea = batchPool.removeAt(0)
+                    val bitmap = generateBatchImage(idea)
+                    if (bitmap != null) {
+                        batchDoneCount++
+                        runOnUiThread {
+                            tvBatchStatus.text = "已完成 $batchDoneCount 张 · 池内 ${batchPool.size} · “$idea”"
+                            ivResult.setImageBitmap(bitmap)
+                        }
+                        persistBatch()
+                    } else {
+                        persistBatch()
                     }
-                    persistBatch()
-                } else {
-                    persistBatch()
+                    if (batchStopRequested) break
+                    Thread.sleep(batchRateDelay)
+                    if (batchStopRequested) break
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Thread.sleep(2000)
                 }
-                if (batchStopRequested) break
-                Thread.sleep(batchRateDelay)
-                if (batchStopRequested) break
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Thread.sleep(2000)
             }
-        }
-        batchRunning.set(false)
-        persistBatch(false)
-        runOnUiThread {
-            btnBatchStart.isEnabled = true
-            btnBatchStop.isEnabled = false
-            btnGenerate.isEnabled = true
-            btnPolish.isEnabled = true
-            btnRandom.isEnabled = true
-            btnVariation.isEnabled = true
-            tvBatchStatus.text = "已停止 · 本批共 $batchDoneCount 张"
-            loadGallery()
+        } finally {
+            batchRunning.set(false)
+            persistBatch(false)
+            runOnUiThread {
+                btnBatchStart.isEnabled = true
+                btnBatchStop.isEnabled = false
+                btnGenerate.isEnabled = true
+                btnPolish.isEnabled = true
+                btnRandom.isEnabled = true
+                btnVariation.isEnabled = true
+                tvBatchStatus.text = "已停止 · 本批共 $batchDoneCount 张"
+                loadGallery()
+            }
         }
     }
 
     private fun topUpPool() {
         val fresh = batchCreateIdeas(batchTheme, 8)
         for (t in fresh) {
-            if (t.isNotBlank()) batchPool.add(t)
+            if (t.isNotBlank() && !isSensitive(t)) batchPool.add(t)
         }
         if (batchPool.size > 24) {
             while (batchPool.size > 24) batchPool.removeAt(batchPool.size - 1)
         }
     }
 
+    private fun isSensitive(text: String): Boolean {
+        val banned = listOf(
+            "nude", "naked", "nsfw", "porn", "explicit", "sexual", "erotic", "hentai",
+            "gore", "blood", "corpse", "murder", "child", "minor", "schoolgirl",
+            "petite", "naked", "sex", "xxx", "semen", "breast", "penis", "vagina"
+        )
+        val lower = text.lowercase()
+        return banned.any { lower.contains(it) }
+    }
+
     private fun generateBatchImage(idea: String): Bitmap? {
         val (_, w, h) = ratios[selectedRatio]
+        val enhancedPrompt = polishPrompt(idea)
         val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
         for (p in providers) {
             val until = cooldowns[p]
@@ -508,9 +644,9 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { tvBatchStatus.text = "${p.loadingText} · 池内 ${batchPool.size + 1}" }
             val bmp = try {
                 when (p) {
-                    Provider.AGNES -> generateWithAgnes(idea, w, h, null)
-                    Provider.HFFLUX -> generateWithHfFlux(idea, w, h)
-                    Provider.POLLINATIONS -> generateWithPollinations(idea, w, h)
+                    Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, null)
+                    Provider.HFFLUX -> generateWithHfFlux(enhancedPrompt, w, h)
+                    Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -519,7 +655,10 @@ class MainActivity : AppCompatActivity() {
             if (bmp != null) {
                 cooldowns.remove(p)
                 currentBitmap = bmp
-                runOnUiThread { btnSave.isEnabled = true }
+                runOnUiThread {
+                    btnSave.isEnabled = true
+                    btnUpscale.isEnabled = true
+                }
                 saveRecord(bmp, idea, idea)
                 return bmp
             }
@@ -545,15 +684,11 @@ class MainActivity : AppCompatActivity() {
             "$theme，艺术化极简构图"
         )
         return try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(90, TimeUnit.SECONDS)
-                .build()
             val body = JSONObject()
                 .put("model", "agnes-2.0-flash")
                 .put("messages", JSONArray().apply {
                     put(JSONObject().put("role", "user").put("content",
-                        "你是插画创意总监。围绕主题「$theme」创作 $n 个彼此差异明显的英文绘图描述，每次换构图、元素或氛围，避免重复。只输出描述，每行一个，不要编号、不要额外文字。"))
+                        "你是 AI 绘图提示词扩写器。给“标签”加准确、具体的提示词：针对标签「$theme」扩写出 $n 个可直接用于出图的英文描述，每行一条。要求各不相同：换构图、视角、环境光、质感、细节，把标签变成完整可执行的绘图 prompt（主客体+环境+光影+质感）。每行就是一条成品 prompt，不要编号，不要解释。"))
                 })
                 .put("max_tokens", 1800)
             val req = Request.Builder()
@@ -562,7 +697,7 @@ class MainActivity : AppCompatActivity() {
                 .header("Content-Type", "application/json")
                 .post(body.toString().toRequestBody("application/json".toMediaType()))
                 .build()
-            val resp = client.newCall(req).execute()
+            val resp = httpClient.newCall(req).execute()
             val raw = resp.body?.string()
             resp.close()
             val lines = raw?.let { r ->
@@ -626,7 +761,11 @@ class MainActivity : AppCompatActivity() {
             val enhancedPrompt = polishPrompt(idea)
             tvPreviewText = enhancedPrompt
 
-            val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
+            val providers = if (refImageUrl != null) {
+                listOf(Provider.AGNES)
+            } else {
+                listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
+            }
 
             var bitmap: Bitmap? = null
             var usedSource = ""
@@ -653,7 +792,10 @@ class MainActivity : AppCompatActivity() {
                     btnImgSave.isEnabled = true
                     saveRecord(finalBitmap, idea, enhancedPrompt)
                 } else {
-                    tvImgStatus.text = "生成失败：所有引擎都忙或网络超时，请稍后重试"
+                    tvImgStatus.text = if (refImageUrl != null)
+                        "生成失败：参考图引擎忙或超时，请稍后重试"
+                    else
+                        "生成失败：所有引擎都忙或网络超时，请稍后重试"
                 }
                 setBusy(false, img = true)
                 generating.set(false)
@@ -842,8 +984,8 @@ class MainActivity : AppCompatActivity() {
     private fun polishPrompt(idea: String): String {
         if (agnesKey.isNotEmpty()) {
             try {
-                val styleHint = if (selectedStyle == 7) {
-                    " (keep it anti-AI: candid, natural skin texture, film grain, muted colors, no CGI/airbrushing/oversaturation)"
+                val styleHint = if (antiAi) {
+                    " (style: $antiAiSuffix)"
                 } else if (selectedStyle > 0) {
                     " (style: ${styleSuffixes[selectedStyle]})"
                 } else {
@@ -876,7 +1018,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildLocalPrompt(englishIdea: String): String {
-        val style = if (selectedStyle > 0) styleSuffixes[selectedStyle] else ""
+        val style = if (antiAi) antiAiSuffix else if (selectedStyle > 0) styleSuffixes[selectedStyle] else ""
         val quality = "8k resolution, highly detailed, sharp focus, masterpiece, best quality"
         val parts = mutableListOf(englishIdea)
         if (style.isNotEmpty()) parts.add(style) else parts.add("realistic, cinematic lighting")
@@ -888,9 +1030,9 @@ class MainActivity : AppCompatActivity() {
         if (agnesKey.isEmpty()) return null
         return try {
             val finalPrompt = if (refUrl != null) {
-                "Use the reference image as the base. Keep the same composition, subject and overall look, only apply the described changes. $prompt"
+                "Use the reference image as the base. Keep the same composition, subject and overall look, only apply the described changes. Preserve the exact number of subjects and perfect human anatomy: exactly two legs, two arms, no extra limbs, no deformed hands. $prompt"
             } else {
-                prompt
+                "Exactly two legs, two arms, no extra limbs, no deformed hands, good anatomy. $prompt"
             }
             val body = JSONObject()
                 .put("model", "agnes-image-2.1-flash")
@@ -1089,7 +1231,7 @@ class MainActivity : AppCompatActivity() {
                         .put("role", "user")
                         .put("content", JSONArray()
                             .put(JSONObject().put("type", "text")
-                                .put("text", "Describe this image as a detailed English image-generation prompt. Include subject, style, lighting, mood. Output only the English prompt, no quotes, under 80 words."))
+                                .put("text", "用中文详细描述这张图片，作为图像生成的提示词。写出主体、构图、光线、色调、氛围、质感、风格。只输出中文描述本身，不要引号，80字以内。"))
                             .put(JSONObject().put("type", "image_url")
                                 .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$base64"))))))
             val resp = postJson("$agnesBase/chat/completions", body)
@@ -1220,11 +1362,40 @@ class MainActivity : AppCompatActivity() {
         btnRow.addView(btnDelete)
         view.addView(btnRow)
 
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("作品详情")
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .create()
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        dialog.setContentView(view)
+        val wm = dialog.window
+        val dlp = ViewGroup.LayoutParams.MATCH_PARENT
+        @Suppress("DEPRECATION")
+        wm?.setLayout(dlp, ViewGroup.LayoutParams.WRAP_CONTENT)
+        wm?.setGravity(android.view.Gravity.CENTER)
+        wm?.setDimAmount(0.6f)
+        view.setPadding(dp(18), dp(16), dp(18), dp(12))
+
+        // 标题行
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(8, 0, 8, 8)
+        }
+        titleRow.addView(TextView(this).apply {
+            text = "作品详情"
+            textSize = 17f
+            setTextColor(0xFFFFFFFF.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        titleRow.addView(Button(this).apply {
+            text = "关闭"
+            textSize = 13f
+            setTextColor(0xFFB3B3B3.toInt())
+            setBackgroundResource(R.drawable.bg_btn_outline)
+            stateListAnimator = null
+            setPadding(24, 8, 24, 8)
+            setOnClickListener { dialog.dismiss() }
+        })
+        view.addView(titleRow, 0)
 
         btnRedraw.setOnClickListener {
             dialog.dismiss()
@@ -1265,6 +1436,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    @Synchronized
     private fun saveRecord(bitmap: Bitmap, idea: String, englishPrompt: String) {
         try {
             val ts = System.currentTimeMillis()
