@@ -82,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         Triple("3:4", 864, 1152)
     )
 
-    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实")
+    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实", "去AI味")
     private val styleSuffixes = listOf(
         "",
         "cyberpunk, neon lights, futuristic city",
@@ -90,7 +90,8 @@ class MainActivity : AppCompatActivity() {
         "oil painting, rich brushstrokes, impressionist",
         "anime style, vibrant colors, studio quality",
         "pixel art style, retro game",
-        "photorealistic, shot on camera, sharp details"
+        "photorealistic, shot on camera, sharp details",
+        "candid documentary photo, natural skin texture, subtle film grain, muted natural colors, realistic imperfections, 35mm analog film look, honest natural lighting, no CGI, no airbrushing, no oversaturation"
     )
 
     private val randomIdeas = listOf(
@@ -323,13 +324,20 @@ class MainActivity : AppCompatActivity() {
     private fun polishPrompt(idea: String): String {
         if (agnesKey.isNotEmpty()) {
             try {
+                val styleHint = if (selectedStyle == 7) {
+                    " (keep it anti-AI: candid, natural skin texture, film grain, muted colors, no CGI/airbrushing/oversaturation)"
+                } else if (selectedStyle > 0) {
+                    " (style: ${styleSuffixes[selectedStyle]})"
+                } else {
+                    ""
+                }
                 val body = JSONObject()
                     .put("model", "agnes-2.0-flash")
                     .put("max_tokens", 500)
                     .put("messages", JSONArray().put(JSONObject()
                         .put("role", "system")
-                        .put("content", "你是AI绘画提示词优化大师。把用户的中文描述或粗糙英文描述改写成一段高质量英文图像提示词：具体、有画面感、含灯光与质感描述。只输出优化后的英文提示词本身，不要解释不要引号。"))
-                        .put(JSONObject().put("role", "user").put("content", idea)))
+                        .put("content", "你是AI绘画提示词优化大师。把用户的中文描述或粗糙英文描述改写成一段高质量英文图像提示词：具体、有画面感、含灯光与质感描述${if (styleHint.isEmpty()) "" else "，并严格保持用户指定风格" }。只输出优化后的英文提示词本身，不要解释不要引号。"))
+                        .put(JSONObject().put("role", "user").put("content", idea + styleHint)))
                 val resp = postJson("$agnesBase/chat/completions", body)
                 val content = resp?.getJSONArray("choices")
                     ?.getJSONObject(0)
