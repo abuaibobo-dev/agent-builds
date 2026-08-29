@@ -201,10 +201,22 @@
                     android:layout_marginTop="8dp"/>
 
                 <Button
+                    android:id="@+id/btnUpscale"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="10dp"
+                    android:text="放大到 4K（AI 超分）"
+                    android:textColor="@color/text_primary"
+                    android:background="@drawable/bg_btn_outline"
+                    android:textSize="14sp"
+                    android:stateListAnimator="@null"
+                    android:enabled="false"/>
+
+                <Button
                     android:id="@+id/btnSave"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="10dp"
                     android:text="保存到相册"
                     android:textColor="@color/text_primary"
                     android:background="@drawable/bg_btn_outline"
@@ -356,10 +368,22 @@
                 </FrameLayout>
 
                 <Button
+                    android:id="@+id/btnImgUpscale"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="10dp"
+                    android:text="放大到 4K（AI 超分）"
+                    android:textColor="@color/text_primary"
+                    android:background="@drawable/bg_btn_outline"
+                    android:textSize="14sp"
+                    android:stateListAnimator="@null"
+                    android:enabled="false"/>
+
+                <Button
                     android:id="@+id/btnImgSave"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="10dp"
                     android:text="保存到相册"
                     android:textColor="@color/text_primary"
                     android:background="@drawable/bg_btn_outline"

@@ -40,6 +40,10 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val UPSCALER_BASE = "https://Hockman-real-esrgan-upscaler.hf.space"
+    }
+
     private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
     private lateinit var tabGenerate: View
     private lateinit var tabImg2img: View
@@ -50,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnGenerate: Button
     private lateinit var btnPolish: Button
     private lateinit var btnSave: Button
+    private lateinit var btnUpscale: Button
     private lateinit var btnRandom: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
@@ -61,6 +66,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etImgPrompt: EditText
     private lateinit var btnImgGenerate: Button
     private lateinit var btnImgSave: Button
+    private lateinit var btnImgUpscale: Button
     private lateinit var ivImgResult: ImageView
     private lateinit var ivImgRefThumb: ImageView
     private lateinit var frameImgRefThumb: FrameLayout
@@ -74,7 +80,9 @@ class MainActivity : AppCompatActivity() {
         .readTimeout(150, TimeUnit.SECONDS)
         .build()
     private val generating = AtomicBoolean(false)
+    private val generating = AtomicBoolean(false)
     private val polishing = AtomicBoolean(false)
+    private val upscaling = AtomicBoolean(false)
 
     private var selectedRatio = 0
     private var selectedStyle = 0
@@ -152,6 +160,7 @@ class MainActivity : AppCompatActivity() {
         btnGenerate = findViewById(R.id.btnGenerate)
         btnPolish = findViewById(R.id.btnPolish)
         btnSave = findViewById(R.id.btnSave)
+        btnUpscale = findViewById(R.id.btnUpscale)
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)
@@ -163,6 +172,7 @@ class MainActivity : AppCompatActivity() {
         etImgPrompt = findViewById(R.id.etImgPrompt)
         btnImgGenerate = findViewById(R.id.btnImgGenerate)
         btnImgSave = findViewById(R.id.btnImgSave)
+        btnImgUpscale = findViewById(R.id.btnImgUpscale)
         ivImgResult = findViewById(R.id.ivImgResult)
         ivImgRefThumb = findViewById(R.id.ivImgRefThumb)
         frameImgRefThumb = findViewById(R.id.frameImgRefThumb)
@@ -268,6 +278,18 @@ class MainActivity : AppCompatActivity() {
 
         btnImgSave.setOnClickListener {
             saveBitmapToGallery(imgCurrentBitmap)
+        }
+
+        btnUpscale.setOnClickListener {
+            val bmp = currentBitmap
+            if (bmp == null || upscaling.get() || generating.get()) return@setOnClickListener
+            upscale4k(bmp, isImg = false)
+        }
+
+        btnImgUpscale.setOnClickListener {
+            val bmp = imgCurrentBitmap
+            if (bmp == null || upscaling.get() || generating.get()) return@setOnClickListener
+            upscale4k(bmp, isImg = true)
         }
 
         btnSave.setOnClickListener {
@@ -387,6 +409,132 @@ class MainActivity : AppCompatActivity() {
                 generating.set(false)
             }
         }
+    }
+
+    private fun upscale4k(source: Bitmap, isImg: Boolean) {
+        if (upscaling.getAndSet(true)) return
+        val status = if (isImg) tvImgStatus else tvStatus
+        if (isImg) { btnImgUpscale.isEnabled = false; btnImgSave.isEnabled = false }
+        else { btnUpscale.isEnabled = false; btnSave.isEnabled = false }
+
+        thread {
+            try {
+                val maxDim = maxOf(source.width, source.height)
+                if (maxDim >= 4500) {
+                    runOnUiThread { status.text = "图片已够大，无需放大" }
+                    return@thread
+                }
+                runOnUiThread { status.text = "AI 超分放大中（x${if (maxDim <= 1200) 4 else 2}）..." }
+
+                val uploadFile = File(cacheDir, "up_${System.currentTimeMillis()}.png")
+                FileOutputStream(uploadFile).use { fo ->
+                    source.compress(Bitmap.CompressFormat.PNG, 100, fo)
+                }
+                val upBody = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("files", uploadFile.name, uploadFile.asRequestBody("image/png".toMediaType()))
+                    .build()
+                val upReq = Request.Builder().url("$UPSCALER_BASE/gradio_api/upload").post(upBody).build()
+                val upText = httpClient.newCall(upReq).execute().use { it.body?.string() }
+                val path = parseUploadedPath(upText)
+                if (path == null) {
+                    runOnUiThread { status.text = "超分上传失败，请重试" }
+                    return@thread
+                }
+
+                val scale = if (maxDim <= 1200) 4 else 2
+                val fn = if (scale == 4) "process_and_get_output_1" else "process_and_get_output"
+                val data = JSONArray()
+                    .put(JSONObject().put("path", path))
+                    .put(scale)
+                val createBody = JSONObject().put("data", data).toString()
+                val createReq = Request.Builder()
+                    .url("$UPSCALER_BASE/gradio_api/call/$fn")
+                    .post(createBody.toRequestBody("application/json".toMediaType()))
+                    .build()
+                val createResp = httpClient.newCall(createReq).execute()
+                val eventId = parseEventId(createResp.body?.string())
+                createResp.close()
+                if (eventId == null) {
+                    runOnUiThread { status.text = "超分引擎排队失败，稍后再试" }
+                    return@thread
+                }
+
+                var outUrl: String? = null
+                repeat(60) {
+                    Thread.sleep(2500)
+                    val evReq = Request.Builder()
+                        .url("$UPSCALER_BASE/gradio_api/call/$fn/$eventId")
+                        .header("Accept", "text/event-stream")
+                        .build()
+                    val evResp = httpClient.newCall(evReq).execute()
+                    val txt = evResp.body?.string() ?: ""
+                    evResp.close()
+                    if (txt.contains("event: complete")) {
+                        outUrl = parseUrl(txt)
+                        return@repeat
+                    }
+                    if (txt.contains("event: error")) {
+                        return@repeat
+                    }
+                }
+                if (outUrl == null) {
+                    runOnUiThread { status.text = "超分失败：引擎忙或超时" }
+                    return@thread
+                }
+
+                val imgBytes = httpClient.newCall(Request.Builder().url(outUrl).build())
+                    .execute().use { it.body?.bytes() }
+                if (imgBytes == null) {
+                    runOnUiThread { status.text = "超分结果下载失败" }
+                    return@thread
+                }
+                val upBmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size)
+                if (upBmp == null) {
+                    runOnUiThread { status.text = "超分结果解析失败" }
+                    return@thread
+                }
+                uploadFile.delete()
+                runOnUiThread {
+                    if (isImg) { imgCurrentBitmap = upBmp; ivImgResult.setImageBitmap(upBmp) }
+                    else { currentBitmap = upBmp; ivResult.setImageBitmap(upBmp) }
+                    status.text = "已放大：${upBmp.width}×${upBmp.height}（AI 超分）"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread { status.text = "超分失败：${e.message}" }
+            } finally {
+                upscaling.set(false)
+                runOnUiThread { setBusy(false, img = isImg) }
+            }
+        }
+    }
+
+    private fun parseUploadedPath(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        return try {
+            val arr = JSONArray(raw)
+            arr.optString(0).takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseEventId(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        return try {
+            JSONObject(raw).optString("event_id").takeIf { it.isNotEmpty() && it != "null" }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseUrl(events: String): String? {
+        val idx = events.lastIndexOf("event: complete")
+        if (idx < 0) return null
+        val section = events.substring(idx)
+        val m = Regex("url\"\\s*:\\s*\"([^\"]+)\"").find(section)
+        return m?.groupValues?.get(1)
     }
 
     private fun generateImage(idea: String) {
@@ -918,6 +1066,7 @@ class MainActivity : AppCompatActivity() {
             btnRef.isEnabled = !busy
             pbImgLoading.visibility = if (busy) View.VISIBLE else View.GONE
             if (!busy) btnImgSave.isEnabled = imgCurrentBitmap != null
+            if (!busy) btnImgUpscale.isEnabled = imgCurrentBitmap != null && !upscaling.get()
         } else {
             btnGenerate.isEnabled = !busy
             btnPolish.isEnabled = !busy
@@ -925,6 +1074,7 @@ class MainActivity : AppCompatActivity() {
             btnVariation.isEnabled = !busy
             pbLoading.visibility = if (busy) View.VISIBLE else View.GONE
             if (!busy) btnSave.isEnabled = currentBitmap != null
+            if (!busy) btnUpscale.isEnabled = currentBitmap != null && !upscaling.get()
         }
     }
 }
