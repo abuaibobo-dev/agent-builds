@@ -418,6 +418,21 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"/>
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="编辑类型"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:layout_marginTop="18dp"
+                    android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:id="@+id/llImgEditMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"/>
+
                 <FrameLayout
                     android:id="@+id/frameImgRefThumb"
                     android:layout_width="112dp"

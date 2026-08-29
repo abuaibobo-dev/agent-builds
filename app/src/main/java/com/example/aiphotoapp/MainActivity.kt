@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -81,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvImgRefClear: TextView
     private lateinit var tvImgStatus: TextView
     private lateinit var pbImgLoading: ProgressBar
+    private lateinit var llImgEditMode: LinearLayout
     private lateinit var galleryRecycler: RecyclerView
 
     private val httpClient = OkHttpClient.Builder()
@@ -94,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var batchStopRequested = false
     private var batchRateDelay = 5000L
+    private var selectedEditMode = ImageEditPrompt.Mode.REMOVE_BACKGROUND
     private val batchPool = mutableListOf<String>()
     private var batchDoneCount = 0
     private var batchTheme = ""
@@ -205,6 +208,7 @@ class MainActivity : AppCompatActivity() {
         tvImgRefClear = findViewById(R.id.tvImgRefClear)
         tvImgStatus = findViewById(R.id.tvImgStatus)
         pbImgLoading = findViewById(R.id.pbImgLoading)
+        llImgEditMode = findViewById(R.id.llImgEditMode)
         galleryRecycler = findViewById(R.id.tab_gallery)
         galleryRecycler.layoutManager = StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
 
@@ -301,7 +305,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请先选择参考图", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            generateImageFrom(prompt)
+            generateImageFrom(ImageEditPrompt.build(selectedEditMode, prompt))
         }
 
         btnImgSave.setOnClickListener {
@@ -325,6 +329,9 @@ class MainActivity : AppCompatActivity() {
             setChipDefault(llRate, idx)
         }
         setChipDefault(llRate, 1)
+        buildChips(llImgEditMode, listOf("抠背景", "换背景", "换衣服", "改衣服颜色")) { idx ->
+            selectedEditMode = ImageEditPrompt.Mode.values()[idx]
+        }
 
         btnBatchStart.setOnClickListener {
             if (batchRunning.get()) return@setOnClickListener
