@@ -73,8 +73,8 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { tvStatus.text = "翻译失败，直接用原话生成" }
             }
 
-            val enhancedPrompt = "$english, 8k resolution, highly detailed, realistic, masterpiece, best quality"
-            val encodedPrompt = URLEncoder.encode(enhancedPrompt, "UTF-8")
+            val enhancedPrompt = "$english, 8k resolution, highly detailed, realistic, masterpiece, best quality".take(400)
+            val encodedPrompt = URLEncoder.encode(enhancedPrompt, "UTF-8").replace("+", "%20")
             val seed = Random.nextInt(100000)
             val imageUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true&seed=$seed"
 
