@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
 
     private var selectedRatio = 0
     private var selectedStyle = 0
+    private var antiAi = false
     private var currentBitmap: Bitmap? = null
     private var imgCurrentBitmap: Bitmap? = null
     private var currentPromptText = ""
@@ -118,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         Triple("3:4", 864, 1152)
     )
 
-    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实", "去AI味")
+    private val styleLabels = listOf("无", "赛博朋克", "水彩", "油画", "动漫", "像素", "写实")
     private val styleSuffixes = listOf(
         "",
         "cyberpunk, neon lights, futuristic city",
@@ -126,9 +127,9 @@ class MainActivity : AppCompatActivity() {
         "oil painting, rich brushstrokes, impressionist",
         "anime style, vibrant colors, studio quality",
         "pixel art style, retro game",
-        "photorealistic, shot on camera, sharp details",
-        "candid documentary photo, natural skin texture, subtle film grain, muted natural colors, realistic imperfections, 35mm analog film look, honest natural lighting, no CGI, no airbrushing, no oversaturation"
+        "photorealistic, shot on camera, sharp details"
     )
+    private val antiAiSuffix = "candid documentary photo, natural skin texture, subtle film grain, muted natural colors, realistic imperfections, 35mm analog film look, honest natural lighting, no CGI, no airbrushing, no oversaturation"
 
     private val randomIdeas = listOf(
         "夕阳下的海边小城，海鸥飞过",
@@ -186,6 +187,8 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvPreview = findViewById(R.id.tvPreview)
         pbLoading = findViewById(R.id.pbLoading)
+        findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.swAntiAi)
+            .setOnCheckedChangeListener { _, checked -> antiAi = checked }
 
         btnRef = findViewById(R.id.btnRef)
         etImgPrompt = findViewById(R.id.etImgPrompt)
@@ -842,7 +845,7 @@ class MainActivity : AppCompatActivity() {
     private fun polishPrompt(idea: String): String {
         if (agnesKey.isNotEmpty()) {
             try {
-                val styleHint = if (selectedStyle == 7) {
+                val styleHint = if (antiAi) {
                     " (keep it anti-AI: candid, natural skin texture, film grain, muted colors, no CGI/airbrushing/oversaturation)"
                 } else if (selectedStyle > 0) {
                     " (style: ${styleSuffixes[selectedStyle]})"
@@ -876,7 +879,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildLocalPrompt(englishIdea: String): String {
-        val style = if (selectedStyle > 0) styleSuffixes[selectedStyle] else ""
+        val style = if (antiAi) antiAiSuffix else if (selectedStyle > 0) styleSuffixes[selectedStyle] else ""
         val quality = "8k resolution, highly detailed, sharp focus, masterpiece, best quality"
         val parts = mutableListOf(englishIdea)
         if (style.isNotEmpty()) parts.add(style) else parts.add("realistic, cinematic lighting")
