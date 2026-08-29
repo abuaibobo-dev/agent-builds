@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/bg"/>
-    <corners android:radius="12dp"/>
-    <stroke android:width="1dp" android:color="@color/surface_high"/>
-</shape>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape>
+            <solid android:color="@color/surface_variant"/>
+            <corners android:radius="999dp"/>
+            <stroke android:width="1dp" android:color="@color/surface_high"/>
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape>
+            <solid android:color="@color/surface_high"/>
+            <corners android:radius="999dp"/>
+            <stroke android:width="1dp" android:color="@color/text_secondary"/>
+        </shape>
+    </item>
+    <item>
+        <shape>
+            <solid android:color="@color/bg"/>
+            <corners android:radius="999dp"/>
+            <stroke android:width="1dp" android:color="@color/surface_high"/>
+        </shape>
+    </item>
+</selector>
