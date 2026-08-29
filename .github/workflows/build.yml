@@ -38,8 +38,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ui-polish-${{ github.run_number }}
-          name: ui-polish-${{ github.run_number }}
-          body: "UI polish with capsule controls and press feedback."
+          tag_name: auto-generation-${{ github.run_number }}
+          name: auto-generation-${{ github.run_number }}
+          body: "Visual Chinese prompt queue for automatic generation."
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true

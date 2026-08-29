@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBatchStop: Button
     private lateinit var tvBatchStatus: TextView
     private lateinit var llRate: LinearLayout
+    private lateinit var llBatchPrompts: LinearLayout
     private lateinit var btnRandom: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
@@ -181,6 +182,7 @@ class MainActivity : AppCompatActivity() {
         btnBatchStop = findViewById(R.id.btnBatchStop)
         tvBatchStatus = findViewById(R.id.tvBatchStatus)
         llRate = findViewById(R.id.llRate)
+        llBatchPrompts = findViewById(R.id.llBatchPrompts)
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
         ivResult = findViewById(R.id.ivResult)
@@ -446,6 +448,7 @@ class MainActivity : AppCompatActivity() {
         btnRandom.isEnabled = false
         btnVariation.isEnabled = false
         tvBatchStatus.text = "启动批量：$batchTheme"
+        renderBatchPrompts(batchPool.toList())
         thread { batchWorker() }
     }
 
@@ -462,6 +465,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val idea = batchPool.removeAt(0)
+                val remaining = batchPool.toList()
+                runOnUiThread { renderBatchPrompts(remaining) }
                 val bitmap = generateBatchImage(idea)
                 if (bitmap != null) {
                     batchDoneCount++
@@ -503,6 +508,34 @@ class MainActivity : AppCompatActivity() {
         if (batchPool.size > 24) {
             while (batchPool.size > 24) batchPool.removeAt(batchPool.size - 1)
         }
+        val snapshot = batchPool.toList()
+        runOnUiThread { renderBatchPrompts(snapshot) }
+    }
+
+    private fun renderBatchPrompts(items: List<String>) {
+        llBatchPrompts.removeAllViews()
+        if (items.isEmpty()) {
+            llBatchPrompts.addView(TextView(this).apply {
+                text = "等待 AI 扩写主题…"
+                textSize = 12f
+                setTextColor(0xFF757575.toInt())
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+            })
+            return
+        }
+        items.forEachIndexed { index, prompt ->
+            llBatchPrompts.addView(TextView(this).apply {
+                text = "${index + 1}. $prompt"
+                textSize = 13f
+                setTextColor(0xFFE0E0E0.toInt())
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                setBackgroundResource(R.drawable.bg_card)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 0, dp(6)) }
+            })
+        }
     }
 
     private fun generateBatchImage(idea: String): Bitmap? {
@@ -541,14 +574,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun batchCreateIdeas(theme: String, n: Int): List<String> {
         val inlineFallback = listOf(
-            "$theme，清晨薄雾中的近景",
-            "$theme，深夜霓虹灯下的剪影",
-            "$theme，俯瞰大场景",
-            "$theme，细节微距特写",
-            "$theme，雨后的倒影画面",
-            "$theme，冬季雪景",
-            "$theme，阳光正午的高对比",
-            "$theme，艺术化极简构图"
+            "$theme，主体位于画面中央，清晨薄雾与柔和逆光，近景构图，细节清晰",
+            "$theme，深夜霓虹街道，雨水倒影，低机位广角，冷暖对比光影",
+            "$theme，俯瞰辽阔环境，主体与远景形成比例关系，日落金色光线",
+            "$theme，微距特写，突出纹理与材质，浅景深，背景柔和虚化",
+            "$theme，雨后湿润环境，倒影与水滴细节，阴天漫射光，电影感构图",
+            "$theme，冬季雪景，白雪覆盖环境，冷色调，远处薄雾与柔光",
+            "$theme，正午强烈阳光，高对比硬光，清晰轮廓，丰富环境细节",
+            "$theme，极简留白构图，单一主体，柔和侧光，干净高级画面"
         )
         return try {
             val client = OkHttpClient.Builder()
@@ -559,7 +592,7 @@ class MainActivity : AppCompatActivity() {
                 .put("model", "agnes-2.0-flash")
                 .put("messages", JSONArray().apply {
                     put(JSONObject().put("role", "user").put("content",
-                        "你是插画创意总监。围绕主题「$theme」创作 $n 个彼此差异明显的英文绘图描述，每次换构图、元素或氛围，避免重复。只输出描述，每行一个，不要编号、不要额外文字。"))
+                        "你是中文视觉创意总监。围绕主题「$theme」创作 $n 个具体、可直接用于绘图的中文提示词。每条必须包含主体、环境、构图、视角、光线、色调或材质中的多个细节；彼此明显不同，避免空泛词和重复。只输出中文描述，每行一条，不要编号，不要英文，不要解释。"))
                 })
                 .put("max_tokens", 1800)
             val req = Request.Builder()
