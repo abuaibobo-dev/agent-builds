@@ -16,6 +16,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -62,6 +63,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBatchStop: Button
     private lateinit var tvBatchStatus: TextView
     private lateinit var llRate: LinearLayout
+    private lateinit var llBatchWall: LinearLayout
+    private lateinit var etSeed: EditText
+    private lateinit var swRandRatio: android.widget.CompoundButton
     private lateinit var btnRandom: Button
     private lateinit var btnVariation: Button
     private lateinit var ivResult: ImageView
@@ -110,6 +114,7 @@ class MainActivity : AppCompatActivity() {
     private var tvPreviewText = ""
     private var lastIdea = ""
     private var refImageUrl: String? = null
+    private var lastSeed: Int? = null
 
     private val agnesBase = "https://apihub.agnes-ai.com/v1"
     private val agnesKey = BuildConfig.AGNES_API_KEY
@@ -192,6 +197,9 @@ class MainActivity : AppCompatActivity() {
         btnBatchStop = findViewById(R.id.btnBatchStop)
         tvBatchStatus = findViewById(R.id.tvBatchStatus)
         llRate = findViewById(R.id.llRate)
+        llBatchWall = findViewById(R.id.llBatchWall)
+        etSeed = findViewById(R.id.etSeed)
+        swRandRatio = findViewById(R.id.swRandRatio)
         findViewById<android.widget.Switch>(R.id.swAntiAi).setOnCheckedChangeListener { _, checked -> antiAi = checked }
         btnRandom = findViewById(R.id.btnRandom)
         btnVariation = findViewById(R.id.btnVariation)
@@ -283,7 +291,21 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "先输入并生成一张图", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            val base = currentFixedSeed()
+            if (base != null) {
+                etSeed.setText((base + 1).toString())
+            }
             generateImage(lastIdea)
+        }
+
+        findViewById<Button>(R.id.btnMaterials).setOnClickListener {
+            showMaterialsDialog()
+        }
+
+        findViewById<Button>(R.id.btnSeedClear).setOnClickListener {
+            etSeed.setText("")
+            lastSeed = null
+            Toast.makeText(this, "已清除固定 seed", Toast.LENGTH_SHORT).show()
         }
 
         btnRef.setOnClickListener {
@@ -597,6 +619,7 @@ class MainActivity : AppCompatActivity() {
         btnRandom.isEnabled = false
         btnVariation.isEnabled = false
         tvBatchStatus.text = "启动批量：$batchTheme"
+        llBatchWall.removeAllViews()
         BatchService.ensureChannel(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(Intent(this, BatchService::class.java))
@@ -604,6 +627,55 @@ class MainActivity : AppCompatActivity() {
             startService(Intent(this, BatchService::class.java))
         }
         thread { batchWorker() }
+    }
+
+    private fun addBatchThumb(bitmap: Bitmap) {
+        val thumb = ImageView(this)
+        val size = dp(72)
+        val lp = LinearLayout.LayoutParams(size, size)
+        lp.setMargins(0, 0, dp(8), 0)
+        thumb.layoutParams = lp
+        thumb.scaleType = ImageView.ScaleType.CENTER_CROP
+        thumb.setBackgroundResource(R.drawable.bg_card)
+        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 144, 144, true)
+        thumb.setImageBitmap(scaled)
+        thumb.setOnClickListener {
+            val bmp2 = bitmap
+            val view = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+            }
+            view.addView(ImageView(this).apply {
+                setImageBitmap(bmp2)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(420))
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundResource(R.drawable.bg_card)
+            })
+            view.addView(Button(this).apply {
+                text = "保存到相册"
+                textSize = 14f
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundResource(R.drawable.bg_btn_outline)
+                stateListAnimator = null
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, dp(10), 0, 0)
+                }
+                setOnClickListener {
+                    saveBitmapToGallery(bmp2)
+                    zoomDialog.dismiss()
+                }
+            })
+            val zoomDialog = android.app.Dialog(this)
+            zoomDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+            zoomDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+            zoomDialog.setContentView(view)
+            @Suppress("DEPRECATION")
+            zoomDialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            zoomDialog.window?.setGravity(android.view.Gravity.CENTER)
+            zoomDialog.window?.setDimAmount(0.6f)
+            zoomDialog.show()
+        }
+        llBatchWall.addView(thumb, 0)
     }
 
     private fun batchWorker() {
@@ -626,6 +698,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             tvBatchStatus.text = "已完成 $batchDoneCount 张 · 池内 ${batchPool.size} · “$idea”"
                             ivResult.setImageBitmap(bitmap)
+                            addBatchThumb(bitmap)
                         }
                         persistBatch()
                     } else {
@@ -677,7 +750,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun generateBatchImage(idea: String): Bitmap? {
-        val (_, w, h) = ratios[selectedRatio]
+        val (_, w, h) = if (swRandRatio.isChecked) ratios[Random.nextInt(ratios.size)] else ratios[selectedRatio]
         val enhancedPrompt = polishPrompt(idea)
         val providers = listOf(Provider.AGNES, Provider.HFFLUX, Provider.POLLINATIONS)
         for (p in providers) {
@@ -988,7 +1061,7 @@ class MainActivity : AppCompatActivity() {
                     val bmp = when (p) {
                         Provider.AGNES -> generateWithAgnes(idea, w, h, null)
                         Provider.HFFLUX -> generateWithHfFlux(idea, w, h)
-                        Provider.POLLINATIONS -> generateWithPollinations(idea, w, h)
+                        Provider.POLLINATIONS -> generateWithPollinations(idea, w, h, currentFixedSeed())
                     }
                     results[p] = bmp
                     runOnUiThread { tvStatus.text = "对比中：${p.label} 完成 ${results.size}/3" }
@@ -1085,12 +1158,14 @@ class MainActivity : AppCompatActivity() {
             var bitmap: Bitmap? = null
             var usedSource = ""
             val startAt = System.currentTimeMillis()
+            val fixedSeed = currentFixedSeed()
+            if (fixedSeed != null) lastSeed = fixedSeed.toInt()
             for (p in providers) {
                 runOnUiThread { tvStatus.text = p.loadingText }
                 bitmap = when (p) {
                     Provider.AGNES -> generateWithAgnes(enhancedPrompt, w, h, null)
                     Provider.HFFLUX -> generateWithHfFlux(enhancedPrompt, w, h)
-                    Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h)
+                    Provider.POLLINATIONS -> generateWithPollinations(enhancedPrompt, w, h, fixedSeed)
                 }
                 if (bitmap != null) {
                     usedSource = p.label
@@ -1251,10 +1326,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun generateWithPollinations(prompt: String, w: Int, h: Int): Bitmap? {
+    private fun currentFixedSeed(): Long? {
+        val text = etSeed.text.toString().trim()
+        if (text.isEmpty()) return null
+        return text.toLongOrNull()
+    }
+
+    private fun generateWithPollinations(prompt: String, w: Int, h: Int, seedArg: Long? = null): Bitmap? {
         return try {
             val encoded = URLEncoder.encode(prompt, "UTF-8").replace("+", "%20")
-            val seed = Random.nextInt(100000)
+            val seed = seedArg ?: Random.nextLong(100000)
             val imageUrl = "https://image.pollinations.ai/prompt/$encoded?width=$w&height=$h&model=flux&enhance=true&nologo=true&seed=$seed"
             downloadBitmap(imageUrl)
         } catch (e: Exception) {
@@ -1656,6 +1737,53 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
             Toast.makeText(this, "分享失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showMaterialsDialog() {
+        val materials = listOf(
+            "摄影大片感", "电影级画面",
+            "赛博朋克夜景", "东方水墨风",
+            "像素复古风", "唯美水彩",
+            "超写实产品图", "国潮插画",
+            "极简留白构图", "梦幻光影",
+            "暗黑哥特风", "宫崎骏治愈系"
+        )
+        val view = ScrollView(this)
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        view.addView(list)
+        for (m in materials) {
+            val item = Button(this).apply {
+                text = m
+                textSize = 15f
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundResource(R.drawable.bg_btn_outline)
+                stateListAnimator = null
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 0, dp(6)) }
+                setOnClickListener {
+                    val prev = etPrompt.text.toString().trim()
+                    etPrompt.setText(if (prev.isEmpty()) m else "$prev，$m")
+                    etPrompt.setSelection(etPrompt.text.length)
+                    dialog.dismiss()
+                }
+            }
+            list.addView(item)
+        }
+
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog)
+        dialog.setContentView(view)
+        @Suppress("DEPRECATION")
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.8).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(android.view.Gravity.CENTER)
+        dialog.window?.setDimAmount(0.6f)
+        dialog.show()
     }
 
     private fun setBusy(busy: Boolean, img: Boolean = false) {
