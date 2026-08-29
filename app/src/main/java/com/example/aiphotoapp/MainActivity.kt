@@ -176,8 +176,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val log = "${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n$sw"
+            try { File(filesDir, "crash.log").writeText(log) } catch (e2: Exception) {}
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(this, "崩溃：${log.lineSequence().filter { it.contains("Caused by") || it.contains("com.example.aiphotoapp") }.firstOrNull() ?: e.toString()}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e2: Exception) {}
+            Thread.sleep(2500)
+        }
         setContentView(R.layout.activity_main)
-
+        try {
         worksDir = File(filesDir, "works").apply { mkdirs() }
         batchStateFile = File(filesDir, "batch_state.json")
 
@@ -384,6 +396,15 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnShare).setOnClickListener {
             shareBitmap(currentBitmap)
+        }
+        } catch (e: Throwable) {
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                File(filesDir, "crash.log").writeText("onCreate: $sw")
+            } catch (e2: Exception) {}
+            Toast.makeText(this, "启动失败：${e.javaClass.simpleName}: ${e.message}", Toast.LENGTH_LONG).show()
+            e.printStackTrace()
         }
     }
 
