@@ -2,8 +2,11 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "diagnostic-baseline" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -31,3 +34,12 @@ jobs:
         with:
           name: InfiniteGallery-App
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish diagnostic APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: diagnostic-428-${{ github.run_number }}
+          prerelease: true
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
