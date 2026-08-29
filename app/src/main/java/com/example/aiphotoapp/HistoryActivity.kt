@@ -104,7 +104,7 @@ class HistoryActivity : AppCompatActivity() {
             showPreview(obj)
         }
 
-        val sep = ViewGroup.MarginLayoutParams(MarginLayoutParams.MATCH_PARENT, 1)
+        val sep = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
         sep.setMargins(dp(8), 0, dp(8), dp(4))
         container.addView(card)
         container.addView(android.view.View(this), sep)
