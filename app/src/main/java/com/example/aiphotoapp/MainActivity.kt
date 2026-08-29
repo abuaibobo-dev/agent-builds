@@ -955,6 +955,7 @@ class MainActivity : AppCompatActivity() {
             val infoReq = Request.Builder().url("$hfFluxBase/gradio_api/info").build()
             val infoText = httpClient.newCall(infoReq).execute().use { it.body?.string() } ?: return null
             val epName = JSONObject(infoText).getJSONObject("named_endpoints").keys().next()
+            val endpoint = GradioEndpoint.normalize(epName)
             val params = JSONObject(infoText).getJSONObject("named_endpoints").getJSONObject(epName).getJSONArray("parameters")
 
             val dataArr = JSONArray()
@@ -980,7 +981,7 @@ class MainActivity : AppCompatActivity() {
             val submitBody = JSONObject().put("data", dataArr).toString()
                 .toRequestBody("application/json; charset=utf-8".toMediaType())
             val submitReq = Request.Builder()
-                .url("$hfFluxBase/gradio_api/call/$epName")
+                .url("$hfFluxBase/gradio_api/call/$endpoint")
                 .post(submitBody)
                 .build()
             val eventId = httpClient.newCall(submitReq).execute().use { resp ->
@@ -991,7 +992,7 @@ class MainActivity : AppCompatActivity() {
             var resultUrl: String? = null
             for (attempt in 0 until 60) {
                 Thread.sleep(2000)
-                val pollReq = Request.Builder().url("$hfFluxBase/gradio_api/call/$epName/$eventId").build()
+                val pollReq = Request.Builder().url("$hfFluxBase/gradio_api/call/$endpoint/$eventId").build()
                 val text = httpClient.newCall(pollReq).execute().use { it.body?.string() } ?: continue
                 val idx = text.lastIndexOf("data: ")
                 if (idx >= 0) {
