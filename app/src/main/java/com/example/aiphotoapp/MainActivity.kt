@@ -481,7 +481,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { status.text = "超分失败：引擎忙或超时" }
                     return@thread
                 }
-                val fetchedUrl = outUrl
+                val fetchedUrl = outUrl ?: return@thread
 
                 val imgBytes = httpClient.newCall(Request.Builder().url(fetchedUrl).build())
                     .execute().use { it.body?.bytes() }
