@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var etPrompt: EditText
     private lateinit var btnGenerate: Button
+    private lateinit var btnPolish: Button
     private lateinit var btnSave: Button
     private lateinit var btnRandom: Button
     private lateinit var btnHistory: Button
@@ -60,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         .readTimeout(150, TimeUnit.SECONDS)
         .build()
     private val generating = AtomicBoolean(false)
+    private val polishing = AtomicBoolean(false)
 
     private var selectedRatio = 0
     private var selectedStyle = 0
@@ -126,6 +128,7 @@ class MainActivity : AppCompatActivity() {
 
         etPrompt = findViewById(R.id.etPrompt)
         btnGenerate = findViewById(R.id.btnGenerate)
+        btnPolish = findViewById(R.id.btnPolish)
         btnSave = findViewById(R.id.btnSave)
         btnRandom = findViewById(R.id.btnRandom)
         btnHistory = findViewById(R.id.btnHistory)
@@ -152,6 +155,15 @@ class MainActivity : AppCompatActivity() {
             }
             lastIdea = prompt
             generateImage(prompt)
+        }
+
+        btnPolish.setOnClickListener {
+            val prompt = etPrompt.text.toString().trim()
+            if (prompt.isEmpty()) {
+                Toast.makeText(this, "先输入描述再优化", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            polishThenFill(prompt)
         }
 
         btnRandom.setOnClickListener {
@@ -241,6 +253,19 @@ class MainActivity : AppCompatActivity() {
             val chip = styleChips.getChildAt(i) as Button
             chip.setBackgroundResource(if (i == selectedStyle) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
             chip.setTextColor(if (i == selectedStyle) 0xFF000000.toInt() else 0xFFB3B3B3.toInt())
+        }
+    }
+
+    private fun polishThenFill(idea: String) {
+        if (polishing.getAndSet(true)) return
+        runOnUiThread { tvStatus.text = "AI 优化提示词中..." }
+        thread {
+            val result = polishPrompt(idea)
+            runOnUiThread {
+                etPrompt.setText(result)
+                tvStatus.text = "提示词已优化，可再调整后生成"
+                polishing.set(false)
+            }
         }
     }
 
@@ -611,6 +636,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setBusy(busy: Boolean) {
         btnGenerate.isEnabled = !busy
+        btnPolish.isEnabled = !busy
         btnRandom.isEnabled = !busy
         btnVariation.isEnabled = !busy
         btnRef.isEnabled = !busy

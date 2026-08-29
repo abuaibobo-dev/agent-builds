@@ -94,6 +94,17 @@
             android:backgroundTint="@color/text_primary"
             android:stateListAnimator="@null"/>
 
+        <Button
+            android:id="@+id/btnPolish"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="10dp"
+            android:text="一键优化提示词（AI 润色）"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/bg_btn_outline"
+            android:textSize="14sp"
+            android:stateListAnimator="@null"/>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
