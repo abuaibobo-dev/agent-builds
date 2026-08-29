@@ -21,6 +21,8 @@ import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -79,7 +81,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvImgRefClear: TextView
     private lateinit var tvImgStatus: TextView
     private lateinit var pbImgLoading: ProgressBar
-    private lateinit var llGallery: LinearLayout
+    private lateinit var galleryRecycler: RecyclerView
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -203,7 +205,8 @@ class MainActivity : AppCompatActivity() {
         tvImgRefClear = findViewById(R.id.tvImgRefClear)
         tvImgStatus = findViewById(R.id.tvImgStatus)
         pbImgLoading = findViewById(R.id.pbImgLoading)
-        llGallery = findViewById(R.id.llGallery)
+        galleryRecycler = findViewById(R.id.tab_gallery)
+        galleryRecycler.layoutManager = StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
 
         buildChips(findViewById(R.id.llRatio), ratios.map { it.first }) { selectedRatio = it }
         buildChips(findViewById(R.id.llImgRatio), ratios.map { it.first }) { selectedRatio = it }
@@ -1154,66 +1157,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadGallery() {
-        llGallery.removeAllViews()
         val index = File(worksDir, "index.json")
         val arr = if (index.exists() && index.length() > 0) JSONArray(index.readText()) else JSONArray()
+        val items = ArrayList<JSONObject>()
+        for (i in 0 until arr.length()) items.add(arr.getJSONObject(i))
+        galleryRecycler.adapter = GalleryAdapter(items)
+    }
 
-        if (arr.length() == 0) {
-            llGallery.addView(TextView(this).apply {
-                text = "还没有作品，去生成第一张吧！"
-                setPadding(48, 100, 48, 48)
-                textSize = 16f
-                setTextColor(0xFFB3B3B3.toInt())
-                gravity = android.view.Gravity.CENTER
-            })
-            return
-        }
+    private inner class GalleryAdapter(
+        private val items: List<JSONObject>
+    ) : RecyclerView.Adapter<GalleryAdapter.Holder>() {
 
-        for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
-            val ts = obj.getLong("ts")
-            val idea = obj.optString("idea", "")
-            val file = File(worksDir, obj.optString("file", ""))
+        inner class Holder(val image: ImageView) : RecyclerView.ViewHolder(image)
 
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(12, 12, 12, 12)
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val image = ImageView(parent.context).apply {
+                layoutParams = StaggeredGridLayoutManager.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(dp(6), dp(6), dp(6), dp(6))
+                }
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundResource(R.drawable.bg_card)
+                clipToOutline = true
             }
-            val lp = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, 0, 0, dp(10))
-            card.layoutParams = lp
-
-            val thumb = ImageView(this)
-            val tsd = dp(72)
-            thumb.layoutParams = LinearLayout.LayoutParams(tsd, tsd)
-            thumb.scaleType = ImageView.ScaleType.CENTER_CROP
-            if (file.exists()) thumb.setImageBitmap(decodeSampled(file, 160))
-            card.addView(thumb)
-
-            val textCol = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-            }
-            val tlp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            tlp.marginStart = dp(12)
-            textCol.layoutParams = tlp
-            textCol.addView(TextView(this).apply {
-                text = idea.ifEmpty { "(无描述)" }
-                textSize = 14f
-                setTextColor(0xFFFFFFFF.toInt())
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            })
-            textCol.addView(TextView(this).apply {
-                text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
-                textSize = 12f
-                setTextColor(0xFF757575.toInt())
-            })
-            card.addView(textCol)
-
-            card.setOnClickListener { showGalleryDetail(obj) }
-            llGallery.addView(card)
+            return Holder(image)
         }
+
+        override fun onBindViewHolder(holder: Holder, position: Int) {
+            val obj = items[position]
+            val file = File(worksDir, obj.optString("file", ""))
+            holder.image.setImageBitmap(if (file.exists()) decodeSampled(file, 900) else null)
+            holder.image.contentDescription = obj.optString("idea", "作品")
+            holder.image.setOnClickListener { showGalleryDetail(obj) }
+        }
+
+        override fun getItemCount(): Int = items.size
     }
 
     private fun showGalleryDetail(obj: JSONObject) {
@@ -1223,9 +1204,10 @@ class MainActivity : AppCompatActivity() {
         val view = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(16, 16, 16, 8)
+            setBackgroundColor(0xFF0F0F0F.toInt())
         }
         val iv = ImageView(this)
-        iv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(320))
+        iv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         iv.scaleType = ImageView.ScaleType.FIT_CENTER
         if (file.exists()) iv.setImageBitmap(decodeSampled(file, 1400))
         view.addView(iv)
@@ -1259,11 +1241,10 @@ class MainActivity : AppCompatActivity() {
         btnRow.addView(btnDelete)
         view.addView(btnRow)
 
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("作品详情")
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .create()
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.black)
+        dialog.setContentView(view)
 
         btnRedraw.setOnClickListener {
             dialog.dismiss()
@@ -1290,6 +1271,7 @@ class MainActivity : AppCompatActivity() {
             loadGallery()
         }
         dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun decodeSampled(file: File, maxEdge: Int): Bitmap? {

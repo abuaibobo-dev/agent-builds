@@ -543,21 +543,14 @@
             </LinearLayout>
         </ScrollView>
 
-        <ScrollView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/tab_gallery"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@color/bg"
-            android:fillViewport="true"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/llGallery"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp"/>
-        </ScrollView>
+            android:padding="6dp"
+            android:clipToPadding="false"
+            android:visibility="gone"/>
 
         <ScrollView
             android:id="@+id/tab_settings"
