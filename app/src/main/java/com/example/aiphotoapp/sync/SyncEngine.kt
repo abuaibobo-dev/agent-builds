@@ -157,6 +157,11 @@ class SyncEngine(
 
     private var recentlyFailed = 0
 
+    private fun pageMessages(page: JSONObject): List<JSONObject> {
+        val arr = page.optJSONArray("messages") ?: JSONArray()
+        return (0 until arr.length()).map { arr.getJSONObject(it) }
+    }
+
     private fun historySafe(sourceChatId: Long, fromMessageId: Long): JSONObject {
         val attempt = telegram.runCatching { historyPage(sourceChatId, fromMessageId) }
         if (attempt.isSuccess) { recentlyFailed = 0; return attempt.getOrThrow() }
