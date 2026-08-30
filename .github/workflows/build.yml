@@ -15,16 +15,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.5'
+          gradle-version: '8.7'
           
       - name: Build APK (Without Wrapper)
         run: gradle assembleDebug
@@ -38,8 +38,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: detail-editing-${{ github.run_number }}
-          name: detail-editing-${{ github.run_number }}
-          body: "Fullscreen generated-image detail with editing modes and local upscaling."
+          tag_name: collector-mvp-${{ github.run_number }}
+          name: collector-mvp-${{ github.run_number }}
+          body: "Telegram channel media collector MVP: TDLib login, history sync via copyMessages, four-tab UI, foreground service."
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true
