@@ -29,9 +29,11 @@ jobs:
       - name: Build APK (Without Wrapper)
         run: gradle assembleDebug -PbuildNumber=${{ github.run_number }}
 
+      - name: Set Date
+        run: echo "APK_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+
       - name: Package APK
         run: |
-          echo "APK_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
           mkdir -p app/build/outputs/apk/release
           cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/release/collector-${{ env.APK_DATE }}-build-${{ github.run_number }}.apk"
 
