@@ -183,10 +183,10 @@ class CollectorActivity : AppCompatActivity() {
         thread {
             val ruleId = CollectorRuntime.activeRuleId.get()
             val dao = db.collectorDao()
-            val cursor = if (ruleId > 0) dao.getCursor(ruleId) else null
-            val copied = if (ruleId > 0) dao.countCopiedMessages(ruleId) else 0
-            val errors = if (ruleId > 0) dao.countLogs(ruleId, "ERROR") else 0
-            val logs = if (ruleId > 0) dao.getRecentLogs(ruleId, 20) else emptyList()
+            val cursor = runBlocking { if (ruleId > 0) dao.getCursor(ruleId) else null }
+            val copied = runBlocking { if (ruleId > 0) dao.countCopiedMessages(ruleId) else 0 }
+            val errors = runBlocking { if (ruleId > 0) dao.countLogs(ruleId, "ERROR") else 0 }
+            val logs = runBlocking { if (ruleId > 0) dao.getRecentLogs(ruleId, 20) else emptyList() }
             runOnUiThread {
                 info.text = buildString {
                     append("当前规则 ID：").append(if (ruleId > 0) ruleId else "无").append('\n')

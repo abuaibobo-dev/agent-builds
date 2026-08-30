@@ -95,7 +95,7 @@ class SyncEngine(
         }
     }
 
-    private fun log(ruleId: Long, level: String, message: String) {
+    private suspend fun log(ruleId: Long, level: String, message: String) {
         dao.insertLog(SyncLog(ruleId = ruleId, level = level, message = message, createdAt = now()))
     }
 
