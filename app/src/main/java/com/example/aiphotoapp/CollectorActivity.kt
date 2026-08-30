@@ -30,11 +30,26 @@ class CollectorActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private val channels = linkedMapOf<Long, String>()
     private var authFieldsAdded = false
+    private var authPending = false
     private var selectedSourceChatId: Long? = null
     private var selectedTargetChatId: Long? = null
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun installCrashHandler() {
+        val crashFile = java.io.File(filesDir, "crash.log")
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { crashFile.writeText("${t?.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}") }
+            prev?.uncaughtException(t, e) ?: kotlin.run { android.os.Process.killProcess(android.os.Process.myPid()) }
+        }
+        runtimeExceptionHandler = { e ->
+            runCatching { crashFile.writeText("runtime: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}") }
+        }
+    }
+
+    private var runtimeExceptionHandler: ((Throwable) -> Unit)? = null
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -53,6 +68,7 @@ class CollectorActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashHandler()
         requestNotificationPermissionIfNeeded()
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF0F0F0F.toInt()) }
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(8, 8, 8, 4) }
@@ -127,17 +143,27 @@ class CollectorActivity : AppCompatActivity() {
     private fun bindClient(client: TelegramManager, channelList: LinearLayout, phone: EditText) {
         client.addListener { update ->
             runOnUiThread {
-                val type = update.optString("@type")
-                if (type == "updateAuthorizationState") handleAuth(client, update.optJSONObject("authorization_state"), phone.text.toString())
-                if (type == "chat") {
-                    val chatType = update.optJSONObject("type")
-                    if (chatType?.optString("@type") != "chatTypeSupergroup" || !chatType.optBoolean("is_channel")) return@runOnUiThread
-                    val idValue = update.optLong("id")
-                    val name = update.optString("title", idValue.toString())
-                    channels[idValue] = name
-                    renderChannels(channelList)
+                try {
+                    val type = update.optString("@type")
+                    if (type == "updateAuthorizationState") handleAuth(client, update.optJSONObject("authorization_state"), phone.text.toString())
+                    if (type == "chat") {
+                        val chatType = update.optJSONObject("type")
+                        if (chatType?.optString("@type") != "chatTypeSupergroup" || !chatType.optBoolean("is_channel")) return@runOnUiThread
+                        val idValue = update.optLong("id")
+                        val name = update.optString("title", idValue.toString())
+                        channels[idValue] = name
+                        renderChannels(channelList)
+                    }
+                    if (type == "chats") {
+                        update.optJSONArray("chat_ids")?.let { ids ->
+                            thread {
+                                for (i in 0 until ids.length()) runCatching { client.getChat(ids.getLong(i)) }
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    runtimeExceptionHandler?.invoke(e)
                 }
-                if (type == "chats") update.optJSONArray("chat_ids")?.let { ids -> for (i in 0 until ids.length()) client.getChat(ids.getLong(i)) }
             }
         }
     }
@@ -166,7 +192,14 @@ class CollectorActivity : AppCompatActivity() {
         when (state?.optString("@type")) {
             "authorizationStateWaitPhoneNumber" -> client.setPhone(phone)
             "authorizationStateReady" -> { status.text = "已登录（账号数据已存本机）"; client.loadChannels() }
-            "authorizationStateWaitCode" -> addAuthField("Telegram 验证码（登录码）", client) { client.setCode(it) }
+            "authorizationStateWaitCode" -> {
+                if (authPending) {
+                    authPending = false
+                    status.text = "验证码无效，已重新输入"
+                } else {
+                    addAuthField("Telegram 验证码（登录码）", client) { client.setCode(it) }
+                }
+            }
             "authorizationStateWaitPassword" -> addAuthField("Telegram 2FA 密码", client) { client.setPassword(it) }
             "authorizationStateWaitTdlibParameters" -> status.text = "TDLib 参数配置中"
             "authorizationStateWaitEncryptionKey" -> status.text = "正在解密本地 session"
@@ -183,6 +216,8 @@ class CollectorActivity : AppCompatActivity() {
         content.addView(submitButton)
         submitButton.setOnClickListener {
             authFieldsAdded = false
+            authPending = true
+            status.text = "正在校验，请稍候…"
             submit(field.text.toString().trim())
         }
     }
@@ -314,7 +349,18 @@ class CollectorActivity : AppCompatActivity() {
 
     private fun engine() = CollectorRuntime.engine
 
-    private fun settings() { title("设置"); content.addView(TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); text = "Session 数据保存在本机 files/tdlib-db。\n说明：清理后台后采集会继续运行（前台服务）。\n通知权限已自动请求；拒绝后后台仍可采集，仅不显示常驻通知。"; setPadding(16, 16, 16, 16) }) }
+    private fun settings() {
+        title("设置")
+        content.addView(TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); text = "Session 数据保存在本机 files/tdlib-db。\n说明：清理后台后采集会继续运行（前台服务）。\n通知权限已自动请求；拒绝后后台仍可采集，仅不显示常驻通知。\n\n崩溃日志："; setPadding(16, 16, 16, 8) })
+        val crashFile = java.io.File(filesDir, "crash.log")
+        val logView = TextView(this).apply { setTextColor(0xFFFF6666.toInt()); text = if (crashFile.exists()) crashFile.readText() else "（无）"; setPadding(16, 4, 16, 8) }
+        content.addView(logView)
+        content.addView(button("清除崩溃日志") {
+            crashFile.delete()
+            logView.text = "（无）"
+            status.text = "已清除"
+        })
+    }
     private fun title(text: String) { content.addView(TextView(this).apply { this.text = text; textSize = 26f; setTextColor(0xFFFFFFFF.toInt()); setPadding(16, 20, 16, 12) }) }
     private fun input(hint: String) = EditText(this).apply { this.hint = hint; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFFB3B3B3.toInt()); setPadding(16, 12, 16, 12) }
     private fun button(text: String, action: (() -> Unit)? = null) = Button(this).apply { this.text = text; setTextColor(0xFFFFFFFF.toInt()); setBackgroundResource(R.drawable.bg_btn_outline); backgroundTintList = null; action?.let { setOnClickListener { it() } } }

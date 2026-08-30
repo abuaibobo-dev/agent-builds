@@ -12,10 +12,8 @@ android {
         applicationId = "com.example.aiphotoapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1000019
+        versionCode = 1000020
         versionName = "1.0-collector-mvp"
-
-        buildConfigField("String", "AGNES_API_KEY", "\"${project.findProperty("AGNES_API_KEY") ?: ""}\"")
     }
 
     buildTypes {
@@ -24,18 +22,14 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-    compileOptions {
+compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
-}
-    buildFeatures {
-        viewBinding = true
-        buildConfig = true
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
 
@@ -45,14 +39,11 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     implementation("io.github.xephosbot:tdlib-kmp-android:1.8.62")
     ksp("androidx.room:room-compiler:2.8.4")
 
-    // 网络请求库 OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.room:room-testing:2.8.4")
     testImplementation("androidx.test:core:1.5.0")
