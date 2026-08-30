@@ -13,7 +13,7 @@ import kotlinx.coroutines.runBlocking
 
 /** 采集所需的 Telegram 最小接口（测试用内存替身替换真实 TDLib）。 */
 interface SyncBackend {
-    fun historyPage(chatId: Long, fromMessageId: Long): JSONObject
+    fun historyPage(chatId: Long, fromMessageId: Long, limit: Int = 100): JSONObject
     fun copyMessages(sourceChatId: Long, targetChatId: Long, messageIds: List<Long>, removeCaption: Boolean = false): JSONObject
 }
 
@@ -161,7 +161,7 @@ class SyncEngine(
     }
 
     private fun doCopy(rule: SyncRule, ids: List<Long>): List<Pair<Long, Long>> {
-        val result = telegram
+        val result = backend
             .runCatching { copyMessages(rule.sourceChatId, rule.targetChatId, ids, !rule.keepCaption) }
             .getOrNull()
         val arr = result?.optJSONArray("messages") ?: JSONArray()
