@@ -63,10 +63,17 @@ class CollectorActivity : AppCompatActivity() {
     private val flushScheduled = AtomicBoolean(false)
     private var phoneSent = false
     private var lastChatRender = 0L
+    private val chatDirty = AtomicBoolean(false)
+    private val renderPending = AtomicBoolean(false)
+    private val renderAll = Runnable {
+        renderPending.set(false)
+        if (chatDirty.compareAndSet(true, false)) renderList()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hapticCrashGuard()
+hapticCrashGuard()
+        runCatching { File(filesDir, "start.log").writeText("launch ${System.currentTimeMillis()}\n") }
         setContentView(com.example.aiphotoapp.R.layout.activity_collector)
         tvTitle = findViewById(com.example.aiphotoapp.R.id.tv_title)
         tvStatus = findViewById(com.example.aiphotoapp.R.id.tv_status)
@@ -133,6 +140,9 @@ class CollectorActivity : AppCompatActivity() {
         }
         sv.addView(body)
         flContent.addView(sv)
+        if (index == 0 && chatDirty.get() && renderPending.compareAndSet(false, true)) {
+            ui.post(renderAll)
+        }
     }
 
     private fun card(container: LinearLayout, block: (LinearLayout) -> Unit) {
@@ -642,7 +652,13 @@ class CollectorActivity : AppCompatActivity() {
             status("授权处理异常：${e.message}", color(com.example.aiphotoapp.R.color.error))
             logCrash(e)
         }
-        if (chatChanged) renderList()
+        if (chatChanged) {
+            chatDirty.set(true)
+            // 合并渲染：洪峰段时间内只重建一次（约 350ms），不再每 80ms 全量刷列表
+            if (currentTab == 0 && renderPending.compareAndSet(false, true)) {
+                ui.postDelayed(renderAll, 350)
+            }
+        }
     }
 
     private fun handleAuth(state: String, c: TelegramManager) {
