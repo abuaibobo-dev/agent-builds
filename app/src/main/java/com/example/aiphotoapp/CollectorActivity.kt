@@ -41,7 +41,6 @@ class CollectorActivity : AppCompatActivity() {
     private lateinit var flContent: FrameLayout
     private val channels = linkedMapOf<Long, String>()
     private var currentChannelList: LinearLayout? = null
-    private var loginPhone = ""
     private var authPending = false
     private var selectedSourceChatId: Long? = null
     private var selectedTargetChatId: Long? = null
@@ -108,7 +107,7 @@ class CollectorActivity : AppCompatActivity() {
         flContent.removeAllViews()
         val screenW = resources.displayMetrics.widthPixels
         val pad = max(16.dp, (screenW - 540.dp) / 2)
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, 4.dp, pad, 24.dp) }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, 2.dp, pad, 16.dp) }
         when (index) {
             0 -> channelManagement(body)
             1 -> overview(body)
@@ -123,35 +122,31 @@ class CollectorActivity : AppCompatActivity() {
     private fun channelManagement(body: LinearLayout) {
         val loggedIn = client != null
         section(body) { sc ->
-            label(sc, if (loggedIn) "已登录 · 账号数据已存本机" else "登录 Telegram", 15f, R.color.onSurface)
             if (loggedIn) {
-                button(sc, "刷新频道列表") {
-                    channels.clear()
-                    currentChannelList?.let { renderChannels(it) }
-                    client?.loadChannels()
-                    status.text = "刷新频道列表"
+                val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+                header.addView(
+                    TextView(this).apply { text = "已登录"; textSize = 14f; setTextColor(color(R.color.primary)) },
+                    LinearLayout.LayoutParams(0, -2, 1f)
+                )
+                val refresh = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+                    text = "刷新"
+                    shapeAppearanceModel = ShapeAppearanceModel.builder().setAllCornerSizes(10.dp.toFloat()).build()
+                    insetTop = 0; insetBottom = 0; minimumHeight = 0; minHeight = 0
+                    backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+                    setTextColor(color(R.color.primary))
+                    setOnClickListener {
+                        channels.clear()
+                        currentChannelList?.let { renderChannels(it) }
+                        client?.loadChannels()
+                        status.text = "刷新频道列表"
+                    }
                 }
-            } else {
-                val apiId = input(sc, "Telegram API ID")
-                val apiHash = input(sc, "Telegram API Hash")
-                val phone = input(sc, "手机号，例如 +86138...")
-                button(sc, "登录 / 初始化") {
-                    val id = apiId.text.toString().trim().toIntOrNull()
-                    val hash = apiHash.text.toString().trim()
-                    if (id == null || hash.isEmpty()) { status.text = "请填写 API ID / API Hash"; return@button }
-                    loginPhone = phone.text.toString().trim()
-                    val newClient = TelegramManager(this, id, hash)
-                    CollectorRuntime.telegram = newClient
-                    bindClient(newClient)
-                    newClient.start()
-                    status.text = "TDLib 已启动，等待授权"
-                }
+                header.addView(refresh, LinearLayout.LayoutParams(-2, 32.dp))
+                sc.addView(header, LP)
             }
-        }
-        section(body) { sc ->
-            label(sc, "频道列表 — 点一个选来源，再点另一个选目标", 13f, R.color.onSurfaceVariant)
+            label(sc, if (loggedIn) "点一个选来源，再点另一个选目标" else "请先到「设置」页登录 Telegram", 13f, R.color.onSurfaceVariant)
             val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            sc.addView(list, LP.apply { topMargin = 4.dp })
+            sc.addView(list, LP.apply { topMargin = 2.dp })
             renderChannels(list)
         }
         if (loggedIn) {
@@ -163,7 +158,7 @@ class CollectorActivity : AppCompatActivity() {
     private fun renderChannels(list: LinearLayout) {
         currentChannelList = list
         list.removeAllViews()
-        channels.entries.forEach { (id, name) -> list.addView(channelRow(name, id), LP.apply { topMargin = 6.dp }) }
+        channels.entries.forEach { (id, name) -> list.addView(channelRow(name, id), LP.apply { topMargin = 4.dp }) }
     }
 
     private fun channelRow(name: String, id: Long): MaterialCardView {
@@ -172,17 +167,17 @@ class CollectorActivity : AppCompatActivity() {
         val bg = if (isTarget) color(R.color.primary) else if (isSource) color(R.color.primaryContainer) else color(R.color.surfaceVariant)
         val fg = if (isTarget) color(R.color.onPrimary) else if (isSource) color(R.color.onPrimaryContainer) else color(R.color.onSurface)
         return MaterialCardView(this).apply {
-            radius = 12.dp.toFloat()
+            radius = 10.dp.toFloat()
             cardElevation = 0f
             strokeWidth = if (isSource || isTarget) 0 else 1.dp
             setStrokeColor(ColorStateList.valueOf(color(R.color.outline)))
             setCardBackgroundColor(ColorStateList.valueOf(bg))
             val row = LinearLayout(this@CollectorActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                setPadding(10.dp, 8.dp, 10.dp, 8.dp)
                 addView(
                     TextView(this@CollectorActivity).apply {
-                        text = name; setTextColor(fg); textSize = 15f
+                        text = name; setTextColor(fg); textSize = 14f
                         typeface = if (isTarget || isSource) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     },
                     LinearLayout.LayoutParams(0, -2, 1f)
@@ -233,7 +228,7 @@ class CollectorActivity : AppCompatActivity() {
 
     private fun handleAuth(client: TelegramManager, state: JSONObject?) {
         when (state?.optString("@type")) {
-            "authorizationStateWaitPhoneNumber" -> client.setPhone(loginPhone)
+            "authorizationStateWaitPhoneNumber" -> client.setPhone(pendingPhone)
             "authorizationStateReady" -> { status.text = "已登录（账号数据已存本机）"; client.loadChannels() }
             "authorizationStateWaitCode" -> {
                 if (authPending) {
@@ -374,6 +369,31 @@ class CollectorActivity : AppCompatActivity() {
     }
 
     private fun settings(body: LinearLayout) {
+        val loggedIn = client != null
+        section(body) { sc ->
+            label(sc, "Telegram 账号", 15f, R.color.onSurface)
+            if (loggedIn) {
+                sc.addView(textView("已登录（账号数据已存本机）", R.color.onSurface, 14f), LP)
+                button(sc, "退出登录", K_OUTLINED) {
+                    confirmDialog("退出登录", "将停止采集并退出账号。确定？") { stopSync() }
+                }
+            } else {
+                val apiId = input(sc, "Telegram API ID")
+                val apiHash = input(sc, "Telegram API Hash")
+                val phone = input(sc, "手机号，例如 +86138...")
+                button(sc, "登录 / 初始化") {
+                    val id = apiId.text.toString().trim().toIntOrNull()
+                    val hash = apiHash.text.toString().trim()
+                    if (id == null || hash.isEmpty()) { status.text = "请填写 API ID / API Hash"; return@button }
+                    pendingPhone = phone.text.toString().trim()
+                    val newClient = TelegramManager(this, id, hash)
+                    CollectorRuntime.telegram = newClient
+                    bindClient(newClient)
+                    newClient.start()
+                    status.text = "TDLib 已启动，等待授权"
+                }
+            }
+        }
         section(body) { sc ->
             label(sc, "关于", 15f, R.color.onSurface)
             sc.addView(textView(
@@ -444,27 +464,28 @@ class CollectorActivity : AppCompatActivity() {
         private const val K_FILLED = 0
         private const val K_OUTLINED = 1
         private const val K_TEXT = 2
+        var pendingPhone = ""
     }
 
     private fun section(body: LinearLayout, block: (LinearLayout) -> Unit): MaterialCardView {
         val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         block(inner)
         return MaterialCardView(this).apply {
-            radius = 16.dp.toFloat()
+            radius = 14.dp.toFloat()
             cardElevation = 0f
             strokeWidth = 1.dp
             setStrokeColor(ColorStateList.valueOf(color(R.color.outline)))
             setCardBackgroundColor(ColorStateList.valueOf(color(R.color.surface)))
-            setContentPadding(16.dp, 8.dp, 16.dp, 8.dp)
+            setContentPadding(12.dp, 6.dp, 12.dp, 6.dp)
             addView(inner)
-            body.addView(this, LP.apply { topMargin = 10.dp })
+            body.addView(this, LP.apply { topMargin = 6.dp })
         }
     }
 
     private fun label(container: LinearLayout, text: String, size: Float, colorRes: Int) {
         container.addView(
             TextView(this).apply { this.text = text; textSize = size; setTextColor(color(colorRes)) },
-            LP.apply { topMargin = 4.dp; bottomMargin = 2.dp }
+            LP.apply { topMargin = 2.dp; bottomMargin = 2.dp }
         )
     }
 
@@ -477,6 +498,7 @@ class CollectorActivity : AppCompatActivity() {
         val edit = TextInputEditText(this).apply {
             if (value != null) setText(value)
             setSingleLine(true)
+            textSize = 14f
         }
         val layout = TextInputLayout(this).apply {
             setHint(hint)
@@ -485,7 +507,7 @@ class CollectorActivity : AppCompatActivity() {
             setBoxCornerRadii(12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat())
             addView(edit)
         }
-        container.addView(layout, LP.apply { topMargin = 8.dp })
+        container.addView(layout, LP.apply { topMargin = 6.dp })
         return edit
     }
 
@@ -502,7 +524,7 @@ class CollectorActivity : AppCompatActivity() {
             }
             setOnClickListener { action() }
         }
-        container.addView(b, LP.apply { topMargin = 8.dp })
+        container.addView(b, LP.apply { topMargin = 4.dp; height = 40.dp })
         return b
     }
 

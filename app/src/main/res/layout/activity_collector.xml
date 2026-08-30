@@ -9,22 +9,22 @@
         android:id="@+id/tv_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="20dp"
-        android:paddingTop="16dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="2dp"
-        android:textSize="24sp"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="0dp"
+        android:textSize="19sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/tv_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="20dp"
-        android:paddingTop="0dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="8dp"
-        android:textSize="13sp" />
+        android:paddingStart="16dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="4dp"
+        android:textSize="12sp" />
 
     <FrameLayout
         android:id="@+id/fl_content"
@@ -36,6 +36,13 @@
         android:id="@+id/nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        app:elevation="0dp"
+        app:itemActiveIndicatorEnabled="false"
+        app:itemIconSize="20dp"
+        app:itemPaddingTop="4dp"
+        app:itemPaddingBottom="6dp"
+        app:itemTextAppearance="@style/TextAppearance.Material3.LabelSmall"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav" />
 </LinearLayout>
