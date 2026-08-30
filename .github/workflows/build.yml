@@ -27,19 +27,25 @@ jobs:
           gradle-version: '8.11.1'
           
       - name: Build APK (Without Wrapper)
-        run: gradle assembleDebug
+        run: gradle assembleDebug -PbuildNumber=${{ github.run_number }}
+
+      - name: Package APK
+        run: |
+          echo "APK_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+          mkdir -p app/build/outputs/apk/release
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/release/collector-${{ env.APK_DATE }}-build-${{ github.run_number }}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: InfiniteGallery-App
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: collector-${{ env.APK_DATE }}-build-${{ github.run_number }}
+          path: app/build/outputs/apk/release/collector-*.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: collector-mvp-${{ github.run_number }}
-          name: collector-mvp-${{ github.run_number }}
+          name: collector ${{ github.run_number }} (${{ env.APK_DATE }})
           body: "Telegram channel media collector MVP: TDLib login, history sync via copyMessages, four-tab UI, foreground service."
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/release/collector-*.apk
           prerelease: true

@@ -13,7 +13,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1000020
-        versionName = "1.0-collector-mvp"
+        versionName = "1.0-collector-build-${project.findProperty("buildNumber") ?: "local"}"
     }
 
     buildTypes {
