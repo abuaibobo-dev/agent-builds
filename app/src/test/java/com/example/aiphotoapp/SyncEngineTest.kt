@@ -100,16 +100,15 @@ class SyncEngineTest {
 
     @Test
     fun `failed batch falls back per message and only successes are recorded`() = runBlocking<Unit> {
-        val backend = FakeBackend((1L..10L).toList(), batchFailures = 1)
+        val backend = FakeBackend((1L..10L).toList(), batchFailures = 3)
         val dao = db.collectorDao()
         val id = dao.insertRule(rule())
         SyncEngine(backend, dao).runForTest(rule().copy(id = id))
 
         assertEquals(10, dao.countCopiedMessages(id))
-        assertEquals(12, backend.batchSizes.size)
-        assertEquals(10, backend.batchSizes[0])
-        assertEquals(10, backend.batchSizes[1])
-        assertTrue(backend.batchSizes.drop(2).all { it == 1 })
+        assertEquals(13, backend.batchSizes.size)
+        assertEquals(listOf(10, 10, 10), backend.batchSizes.take(3))
+        assertTrue(backend.batchSizes.drop(3).all { it == 1 })
         for (sourceId in 1L..10L) {
             val copied = dao.findCopiedMessage(id, 1L, sourceId)!!
             assertTrue("target must be > 0 for $sourceId", copied.targetMessageId > 0L)
