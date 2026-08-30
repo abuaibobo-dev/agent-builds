@@ -1,12 +1,16 @@
 package com.example.aiphotoapp
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.room.Room
@@ -29,6 +33,17 @@ class CollectorActivity : AppCompatActivity() {
     private var selectedSourceChatId: Long? = null
     private var selectedTargetChatId: Long? = null
 
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     private val db: CollectorDatabase
         get() = CollectorRuntime.db ?: Room.databaseBuilder(this, CollectorDatabase::class.java, "collector.db")
             .build().also { CollectorRuntime.db = it }
@@ -38,6 +53,7 @@ class CollectorActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestNotificationPermissionIfNeeded()
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF0F0F0F.toInt()) }
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(8, 8, 8, 4) }
         listOf("频道管理", "运行总览", "采集规则", "设置").forEachIndexed { index, title ->
@@ -298,7 +314,7 @@ class CollectorActivity : AppCompatActivity() {
 
     private fun engine() = CollectorRuntime.engine
 
-    private fun settings() { title("设置"); content.addView(TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); text = "Session 数据保存在本机 files/tdlib-db。\n说明：清理后台后采集会继续运行（前台服务）。\nAndroid 13+ 通知权限未请求时，后台仍可采集，仅不显示常驻通知。"; setPadding(16, 16, 16, 16) }) }
+    private fun settings() { title("设置"); content.addView(TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); text = "Session 数据保存在本机 files/tdlib-db。\n说明：清理后台后采集会继续运行（前台服务）。\n通知权限已自动请求；拒绝后后台仍可采集，仅不显示常驻通知。"; setPadding(16, 16, 16, 16) }) }
     private fun title(text: String) { content.addView(TextView(this).apply { this.text = text; textSize = 26f; setTextColor(0xFFFFFFFF.toInt()); setPadding(16, 20, 16, 12) }) }
     private fun input(hint: String) = EditText(this).apply { this.hint = hint; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFFB3B3B3.toInt()); setPadding(16, 12, 16, 12) }
     private fun button(text: String, action: (() -> Unit)? = null) = Button(this).apply { this.text = text; setTextColor(0xFFFFFFFF.toInt()); setBackgroundResource(R.drawable.bg_btn_outline); backgroundTintList = null; action?.let { setOnClickListener { it() } } }
