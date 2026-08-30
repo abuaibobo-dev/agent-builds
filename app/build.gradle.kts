@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.aiphotoapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1000017
-        versionName = "1.0-detail-editing"
+        versionCode = 1000018
+        versionName = "1.0-collector-mvp"
 
         buildConfigField("String", "AGNES_API_KEY", "\"${project.findProperty("AGNES_API_KEY") ?: ""}\"")
     }

@@ -19,12 +19,13 @@ class SyncEngine(
     private val stopRequested = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
 
-    fun start(rule: SyncRule, onUpdate: (String) -> Unit = {}) {
+    fun start(rule: SyncRule, onStarted: (Long) -> Unit = {}, onUpdate: (String) -> Unit = {}) {
         stopRequested.set(false)
         paused.set(false)
         thread(name = "sync-rule-${rule.id}") {
             runBlocking {
                 val persistedRule = if (rule.id == 0L) rule.copy(id = dao.insertRule(rule)) else rule
+                onStarted(persistedRule.id)
                 run(persistedRule, onUpdate)
             }
         }
@@ -35,11 +36,16 @@ class SyncEngine(
     fun stop() { stopRequested.set(true) }
 
     private suspend fun run(rule: SyncRule, onUpdate: (String) -> Unit) {
-        dao.upsertCursor(SyncCursor(rule.id, status = "SCANNING", updatedAt = now()))
-        log(rule.id, "INFO", "开始从历史消息扫描")
+        val existing = dao.getCursor(rule.id)
+        if (existing != null) {
+            dao.updateCursorStatus(rule.id, "SCANNING", now())
+        } else {
+            dao.upsertCursor(SyncCursor(rule.id, status = "SCANNING", updatedAt = now()))
+        }
+        var fromId = existing?.scanMessageId ?: 0L
+        log(rule.id, "INFO", if (fromId == 0L) "开始从历史消息扫描" else "从断点继续（message $fromId）")
         try {
             val pages = ArrayList<List<JSONObject>>()
-            var fromId = 0L
             while (!stopRequested.get()) {
                 waitIfPaused()
                 val page = telegram.historyPage(rule.sourceChatId, fromId).optJSONArray("messages") ?: JSONArray()
@@ -53,8 +59,9 @@ class SyncEngine(
             dao.upsertCursor(SyncCursor(rule.id, fromId, "COPYING", now()))
             val allowed = rule.mediaTypes.split(',').map { it.trim() }.toSet()
             for (page in pages) {
-                val ids = page.filter { mediaType(it) in allowed }
-                    .map { it.optLong("id") }
+                val candidates = page.filter { mediaType(it) in allowed }
+                val types = candidates.associate { it.optLong("id") to mediaType(it) }
+                val ids = candidates.map { it.optLong("id") }
                     .filter { it > 0 && dao.findCopiedMessage(rule.id, rule.sourceChatId, it) == null }
                 if (ids.isEmpty()) continue
                 waitIfPaused()
@@ -63,7 +70,7 @@ class SyncEngine(
                 val copied = result.optJSONArray("messages") ?: JSONArray()
                 for (i in ids.indices) {
                     val targetId = copied.optJSONObject(i)?.optLong("id") ?: 0L
-                    dao.insertCopiedMessage(CopiedMessage(rule.id, rule.sourceChatId, ids[i], targetId, "MEDIA", now()))
+                    dao.insertCopiedMessage(CopiedMessage(rule.id, rule.sourceChatId, ids[i], targetId, types[ids[i]] ?: "MEDIA", now()))
                 }
                 onUpdate("已复制 ${ids.size} 条")
             }

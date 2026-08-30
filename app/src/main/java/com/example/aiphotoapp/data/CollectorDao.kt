@@ -31,6 +31,9 @@ interface CollectorDao {
     @Query("SELECT * FROM sync_rules WHERE enabled = 1")
     suspend fun getEnabledRules(): List<SyncRule>
 
+    @Query("SELECT * FROM sync_rules ORDER BY id")
+    suspend fun getAllRules(): List<SyncRule>
+
     @Delete
     suspend fun deleteRule(rule: SyncRule)
 
@@ -69,4 +72,16 @@ interface CollectorDao {
 
     @Query("SELECT COUNT(*) FROM sync_logs WHERE ruleId = :ruleId AND level = :level")
     suspend fun countLogs(ruleId: Long, level: String): Int
+
+    @Query("DELETE FROM copied_messages WHERE ruleId = :ruleId")
+    suspend fun deleteCopiedMessages(ruleId: Long)
+
+    @Query("DELETE FROM sync_logs WHERE ruleId = :ruleId")
+    suspend fun deleteLogs(ruleId: Long)
+
+    @Query("DELETE FROM sync_cursors WHERE ruleId = :ruleId")
+    suspend fun deleteCursor(ruleId: Long)
+
+    @Query("SELECT * FROM sync_logs WHERE ruleId = :ruleId ORDER BY createdAt DESC, id DESC LIMIT :limit")
+    suspend fun getRecentLogs(ruleId: Long, limit: Int = 20): List<SyncLog>
 }
