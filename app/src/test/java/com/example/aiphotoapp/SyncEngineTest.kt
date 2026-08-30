@@ -29,7 +29,7 @@ class SyncEngineTest {
         var batchSizes = mutableListOf<Int>()
         private var batchCalls = 0
 
-        override fun historyPage(chatId: Long, fromMessageId: Long): JSONObject {
+        override fun historyPage(chatId: Long, fromMessageId: Long, limit: Int): JSONObject {
             val start = if (fromMessageId == 0L) 0 else ids.indexOfFirst { it <= fromMessageId } + 1
             val arr = JSONArray()
             ids.drop(start).take(100).forEach { arr.put(msg(it)) }
