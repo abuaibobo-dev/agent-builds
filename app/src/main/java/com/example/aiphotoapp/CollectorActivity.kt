@@ -266,6 +266,7 @@ class CollectorActivity : AppCompatActivity() {
                                         targetChatId = selTarget,
                                         mediaTypes = "IMAGE,VIDEO",
                                         keepCaption = true,
+                                        continuous = true,
                                     ),
                                 )
                             }
@@ -355,6 +356,20 @@ class CollectorActivity : AppCompatActivity() {
             titleView(sc, "任务 ${rule?.id ?: "?"}")
             line(sc, "来源：${rule?.sourceChatId ?: "?"}", com.example.aiphotoapp.R.color.onSurface, 13f)
             line(sc, "目标：${rule?.targetChatId ?: "?"}", com.example.aiphotoapp.R.color.onSurface, 13f)
+            val statView = TextView(this).apply { text = "统计读取中…"; textSize = 14f; setTextColor(color(com.example.aiphotoapp.R.color.primary)) }
+            sc.addView(statView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 4.dp() })
+            thread {
+                val stat = runCatching {
+                    runBlocking {
+                        val rid = CollectorRuntime.activeRuleId.get().takeIf { it > 0 } ?: return@runBlocking null to null
+                        dao.countCopiedMessages(rid) to dao.getCursor(rid)
+                    }
+                }.getOrNull() ?: (null to null)
+                ui.post {
+                    val (count, cur) = stat
+                    statView.text = "已复制 $count 条" + (cur?.let { " · 游标 ${it.scanMessageId}" } ?: "")
+                }
+            }
             line(sc, "进度：${CollectorRuntime.engineMsg.ifEmpty { "运行中…" }}", com.example.aiphotoapp.R.color.primary, 14f)
             buttonRow(sc) { row ->
                 button2(row, "暂停", false) { collector(engine, "暂停") }
@@ -438,6 +453,7 @@ class CollectorActivity : AppCompatActivity() {
         "SCANNING" -> "扫描中"
         "COPYING" -> "复制中"
         "COMPLETED" -> "已完成"
+        "CONTINUOUS" -> "持续采集中"
         "FAILED" -> "失败"
         "PAUSED" -> "已暂停"
         "IDLE" -> "未开始"
