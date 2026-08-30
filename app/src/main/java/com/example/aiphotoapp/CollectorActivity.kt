@@ -42,6 +42,8 @@ class CollectorActivity : AppCompatActivity() {
     private val channels = linkedMapOf<Long, String>()
     private var currentChannelList: LinearLayout? = null
     private var authPending = false
+    private var phoneSent = false
+    private var lastRender = 0L
     private var selectedSourceChatId: Long? = null
     private var selectedTargetChatId: Long? = null
     private var runtimeExceptionHandler: ((Throwable) -> Unit)? = null
@@ -156,6 +158,9 @@ class CollectorActivity : AppCompatActivity() {
     }
 
     private fun renderChannels(list: LinearLayout) {
+        val now = System.currentTimeMillis()
+        if (now - lastRender < 120L) return
+        lastRender = now
         currentChannelList = list
         list.removeAllViews()
         channels.entries.forEach { (id, name) -> list.addView(channelRow(name, id), LP.apply { topMargin = 4.dp }) }
@@ -228,7 +233,18 @@ class CollectorActivity : AppCompatActivity() {
 
     private fun handleAuth(client: TelegramManager, state: JSONObject?) {
         when (state?.optString("@type")) {
-            "authorizationStateWaitPhoneNumber" -> client.setPhone(pendingPhone)
+            "authorizationStateWaitPhoneNumber" -> {
+                if (phoneSent) {
+                    status.text = "手机号无效，请重新在设置页登录"
+                } else if (pendingPhone.isEmpty()) {
+                    phoneSent = true
+                    status.text = "请先填写手机号再登录"
+                } else {
+                    phoneSent = true
+                    status.text = "已提交手机号…"
+                    client.setPhone(pendingPhone)
+                }
+            }
             "authorizationStateReady" -> {
                 status.text = "已登录（会话已恢复，自动刷新频道）"
                 client.loadChannels()
@@ -390,6 +406,7 @@ class CollectorActivity : AppCompatActivity() {
                     val hash = apiHash.text.toString().trim()
                     if (id == null || hash.isEmpty()) { status.text = "请填写 API ID / API Hash"; return@button }
                     pendingPhone = phone.text.toString().trim()
+                    phoneSent = false
                     try {
                         val newClient = TelegramManager(this, id, hash)
                         CollectorRuntime.telegram = newClient
