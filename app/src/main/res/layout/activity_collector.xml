@@ -38,7 +38,6 @@
         android:layout_height="wrap_content"
         android:background="@android:color/transparent"
         app:elevation="0dp"
-        app:itemActiveIndicatorEnabled="false"
         app:itemIconSize="20dp"
         app:itemPaddingTop="4dp"
         app:itemPaddingBottom="6dp"
