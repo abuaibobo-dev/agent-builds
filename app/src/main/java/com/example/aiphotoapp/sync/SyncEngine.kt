@@ -5,15 +5,20 @@ import com.example.aiphotoapp.data.CollectorDao
 import com.example.aiphotoapp.data.SyncCursor
 import com.example.aiphotoapp.data.SyncLog
 import com.example.aiphotoapp.data.SyncRule
-import com.example.aiphotoapp.telegram.TelegramManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 
+/** 采集所需的 Telegram 最小接口（测试用内存替身替换真实 TDLib）。 */
+interface SyncBackend {
+    fun historyPage(chatId: Long, fromMessageId: Long): JSONObject
+    fun copyMessages(sourceChatId: Long, targetChatId: Long, messageIds: List<Long>, removeCaption: Boolean = false): JSONObject
+}
+
 class SyncEngine(
-    private val telegram: TelegramManager,
+    private val backend: SyncBackend,
     private val dao: CollectorDao,
 ) {
     private val stopRequested = AtomicBoolean(false)
@@ -31,6 +36,9 @@ class SyncEngine(
             }
         }
     }
+
+    /** 测试入口：同步执行一轮（不另起线程）。 */
+    internal suspend fun runForTest(rule: SyncRule, onUpdate: (String) -> Unit = {}) = run(rule, onUpdate)
 
     fun pause() { paused.set(true) }
     fun resume() { paused.set(false) }
@@ -122,18 +130,42 @@ class SyncEngine(
     }
 
     private suspend fun copyChunk(rule: SyncRule, chunk: List<JSONObject>): Int {
-        val ids = chunk.map { it.optLong("id") }
         val types = chunk.associate { it.optLong("id") to mediaType(it) }
+        val ids = chunk.map { it.optLong("id") }
+        var success = ArrayList<Pair<Long, Long>>()
+        val first = doCopy(rule, ids)
+        success += first.filter { it.second > 0L }
+        var failed = first.filter { it.second <= 0L }.map { it.first }
+
+        // 失败的逐条重试（最多 2 轮，避免一条坏消息拖垮整批）
+        var attempt = 0
+        while (failed.isNotEmpty() && attempt < 2) {
+            Thread.sleep(1500)
+            val retried = doCopy(rule, failed)
+            success += retried.filter { it.second > 0L }
+            failed = retried.filter { it.second <= 0L }.map { it.first }
+            attempt++
+        }
+        if (failed.isNotEmpty()) {
+            log(rule.id, "ERROR", "复制失败将跳过（本次扫描不重试）：${failed.take(10)}")
+        }
+        val nowMs = now()
+        for ((sourceId, targetId) in success) {
+            if (targetId > 0L) {
+                dao.insertCopiedMessage(
+                    CopiedMessage(rule.id, rule.sourceChatId, sourceId, targetId, types[sourceId] ?: "MEDIA", nowMs),
+                )
+            }
+        }
+        return success.size
+    }
+
+    private fun doCopy(rule: SyncRule, ids: List<Long>): List<Pair<Long, Long>> {
         val result = telegram
             .runCatching { copyMessages(rule.sourceChatId, rule.targetChatId, ids, !rule.keepCaption) }
-            .getOrElse { JSONObject().put("messages", JSONArray()) }
-        val copied = result.optJSONArray("messages") ?: JSONArray()
-        for (i in ids.indices) {
-            dao.insertCopiedMessage(
-                CopiedMessage(rule.id, rule.sourceChatId, ids[i], copied.optJSONObject(i)?.optLong("id") ?: 0L, types[ids[i]] ?: "MEDIA", now()),
-            )
-        }
-        return ids.size
+            .getOrNull()
+        val arr = result?.optJSONArray("messages") ?: JSONArray()
+        return ids.mapIndexed { i, sourceId -> sourceId to (arr.optJSONObject(i)?.optLong("id") ?: 0L) }
     }
 
     private fun collectNewer(sourceChatId: Long, lastId: Long): List<JSONObject> {
@@ -163,7 +195,7 @@ class SyncEngine(
     }
 
     private fun historySafe(sourceChatId: Long, fromMessageId: Long): JSONObject {
-        val attempt = telegram.runCatching { historyPage(sourceChatId, fromMessageId) }
+        val attempt = backend.runCatching { historyPage(sourceChatId, fromMessageId) }
         if (attempt.isSuccess) { recentlyFailed = 0; return attempt.getOrThrow() }
         recentlyFailed++
         Thread.sleep(3000)

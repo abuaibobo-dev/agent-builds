@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -179,6 +180,41 @@ class CollectorActivity : AppCompatActivity() {
         )
     }
 
+    private fun typedCheck(container: LinearLayout, label: String, checked: Boolean): CheckBox {
+        val cb = CheckBox(this).apply {
+            this.text = label
+            textSize = 14f
+            isChecked = checked
+            setTextColor(color(com.example.aiphotoapp.R.color.onSurface))
+        }
+        container.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 2.dp() })
+        return cb
+    }
+
+    private fun ruleOptionsDialog(rule: SyncRule, onSave: (SyncRule) -> Unit) {
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0) }
+        val types = rule.mediaTypes.split(',').map { it.trim() }
+        val ckImage = typedCheck(wrap, "图片", "IMAGE" in types)
+        val ckVideo = typedCheck(wrap, "视频", "VIDEO" in types)
+        val ckGif = typedCheck(wrap, "GIF", "GIF" in types)
+        val ckCaption = typedCheck(wrap, "保留描述", rule.keepCaption)
+        val ckContinuous = typedCheck(wrap, "持续采集（新帖自动入库）", rule.continuous)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("编辑规则 #${rule.id}")
+            .setView(wrap)
+            .setPositiveButton("保存") { _, _ ->
+                val mt = buildString {
+                    if (ckImage.isChecked) append("IMAGE,")
+                    if (ckVideo.isChecked) append("VIDEO,")
+                    if (ckGif.isChecked) append("GIF,")
+                }.trimEnd(',')
+                if (mt.isEmpty()) { status("至少选择一种媒体类型", color(com.example.aiphotoapp.R.color.error)); return@setPositiveButton }
+                onSave(rule.copy(mediaTypes = mt, keepCaption = ckCaption.isChecked, continuous = ckContinuous.isChecked))
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun button(container: LinearLayout, text: String, filled: Boolean = true, block: () -> Unit) {
         val b = Button(this).apply {
             this.text = text
@@ -256,17 +292,28 @@ class CollectorActivity : AppCompatActivity() {
                 else -> {
                     line(sc, "来源：${sourceName()}", com.example.aiphotoapp.R.color.primary, 14f)
                     line(sc, "目标：${channels[selTarget]}", com.example.aiphotoapp.R.color.primary, 14f)
+                    val ckImage = typedCheck(sc, "图片", true)
+                    val ckVideo = typedCheck(sc, "视频", true)
+                    val ckGif = typedCheck(sc, "GIF", false)
+                    val ckCaption = typedCheck(sc, "保留描述", true)
+                    val ckContinuous = typedCheck(sc, "持续采集（新帖自动入库）", true)
                     button(sc, "创建采集规则") {
                         val name = sourceName()
+                        val types = buildString {
+                            if (ckImage.isChecked) append("IMAGE,")
+                            if (ckVideo.isChecked) append("VIDEO,")
+                            if (ckGif.isChecked) append("GIF,")
+                        }.trimEnd(',')
+                        if (types.isEmpty()) { status("至少选择一种媒体类型", color(com.example.aiphotoapp.R.color.error)); return@button }
                         thread {
                             runBlocking {
                                 dao.insertRule(
                                     SyncRule(
                                         sourceChatId = selSource,
                                         targetChatId = selTarget,
-                                        mediaTypes = "IMAGE,VIDEO",
-                                        keepCaption = true,
-                                        continuous = true,
+                                        mediaTypes = types,
+                                        keepCaption = ckCaption.isChecked,
+                                        continuous = ckContinuous.isChecked,
                                     ),
                                 )
                             }
@@ -418,6 +465,11 @@ class CollectorActivity : AppCompatActivity() {
                     button2(row, "开始", true) { startRule(rule) }
                     button2(row, "暂停", false) { CollectorRuntime.engine?.pause(); status("已暂停规则 #${rule.id}") }
                     button2(row, "停止", false) { CollectorRuntime.engine?.stop(); status("已停止规则 #${rule.id}（断点保留）") }
+                    button2(row, "编辑", false) {
+                        ruleOptionsDialog(rule) { updated ->
+                            thread { runBlocking { dao.insertRule(updated) }; ui.post { status("规则 #${rule.id} 已更新"); showTab(2) } }
+                        }
+                    }
                 }
                 buttonRow(sc) { row ->
                     button2(row, "重置游标（重扫全部）", false) {
@@ -513,8 +565,8 @@ class CollectorActivity : AppCompatActivity() {
                 listOf(apiId, apiHash, phone).forEachIndexed { i, v ->
                     sc.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = if (i == 0) 8.dp() else 6.dp() })
                 }
-                line(sc, "从 my.telegram.org 获取 API ID / Hash。不采集个人隐私信息，仅用于登录。", com.example.aiphotoapp.R.color.onSurfaceVariant, 12f, 8.dp())
-                button(sc, "登录 / 初始化") { doLogin(apiId, apiHash, phone) }
+                line(sc, "从 my.telegram.org 获取 API ID / Hash。不采集个人隐私信息，仅用于登录。手机号可留空，本机有历史会话时自动恢复。", com.example.aiphotoapp.R.color.onSurfaceVariant, 12f, 8.dp())
+                button(sc, "登录 / 恢复会话") { doLogin(apiId, apiHash, phone) }
             }
         }
         card(body) { sc ->
@@ -598,17 +650,11 @@ class CollectorActivity : AppCompatActivity() {
             "authorizationStateWaitTdlibParameters" -> status("TDLib 参数配置中…")
             "authorizationStateWaitEncryptionKey" -> status("正在解密本地会话…")
             "authorizationStateWaitPhoneNumber" -> {
-                if (phoneSent) status("手机号无效，请回设置页修改后重试", color(com.example.aiphotoapp.R.color.error))
+                if (phoneSent) status("手机号无效，请重新填写", color(com.example.aiphotoapp.R.color.error))
                 else {
                     val p = prefs.getString(KEY_PHONE, "").orEmpty()
-                    if (p.isEmpty()) {
-                        phoneSent = true
-                        status("请先填写有效手机号再登录", color(com.example.aiphotoapp.R.color.error))
-                    } else {
-                        phoneSent = true
-                        status("已提交手机号…")
-                        c.setPhone(p)
-                    }
+                    if (p.isEmpty()) promptPhone(c)
+                    else { phoneSent = true; status("已提交手机号…"); c.setPhone(p) }
                 }
             }
             "authorizationStateWaitCode" -> promptCode(c)
@@ -619,6 +665,24 @@ class CollectorActivity : AppCompatActivity() {
                 navTo(com.example.aiphotoapp.R.id.nav_tab_channels)
             }
         }
+    }
+
+    private fun promptPhone(c: TelegramManager) {
+        val input = EditText(this).apply { hint = "手机号，例如 +86138..."; textSize = 14f; setBackgroundResource(com.example.aiphotoapp.R.drawable.bg_input); setPadding(10.dp(), 6.dp(), 10.dp(), 6.dp()) }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("需要手机号")
+            .setMessage("本机没有保存账号。输入手机号即可继续登录。")
+            .setView(input)
+            .setPositiveButton("提交") { _, _ ->
+                val p = input.text.toString().trim()
+                if (p.isEmpty()) { status("手机号不能为空", color(com.example.aiphotoapp.R.color.error)); return@setPositiveButton }
+                prefs.edit().putString(KEY_PHONE, p).apply()
+                phoneSent = true
+                status("已提交手机号…")
+                c.setPhone(p)
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun promptCode(c: TelegramManager) {

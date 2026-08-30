@@ -29,6 +29,9 @@ jobs:
       - name: Build APK (Without Wrapper)
         run: gradle assembleDebug -PbuildNumber=${{ github.run_number }}
 
+      - name: Run Unit Tests
+        run: gradle testDebugUnitTest -PbuildNumber=${{ github.run_number }}
+
       - name: Set Date
         run: echo "APK_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
 

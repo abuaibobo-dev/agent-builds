@@ -1,6 +1,7 @@
 package com.example.aiphotoapp.telegram
 
 import android.content.Context
+import com.example.aiphotoapp.sync.SyncBackend
 import io.xbot.tdlib.TdLib
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -15,7 +16,7 @@ class TelegramManager(
     private val context: Context,
     private val apiId: Int,
     private val apiHash: String,
-) : AutoCloseable {
+) : AutoCloseable, SyncBackend {
     private val running = AtomicBoolean(false)
     private val listeners = CopyOnWriteArrayList<(JSONObject) -> Unit>()
     @Volatile
