@@ -56,6 +56,7 @@ class CollectorActivity : AppCompatActivity() {
     private val channels = LinkedHashMap<Long, String>()
     private var selSource = 0L
     private var selTarget = 0L
+    private var currentList: LinearLayout? = null
 
     private val updateQ = ConcurrentLinkedQueue<JSONObject>()
     private val flushScheduled = AtomicBoolean(false)
@@ -84,9 +85,9 @@ class CollectorActivity : AppCompatActivity() {
         }
         CollectorRuntime.telegram?.let { bindClient(it) }
         showTab(0)
-        if (client != null) {
+        if (CollectorRuntime.telegram != null) {
             status("正在恢复会话…")
-            client.loadChannels()
+            CollectorRuntime.telegram?.loadChannels()
         } else {
             status("未登录，请到设置页登录", color(com.example.aiphotoapp.R.color.onSurfaceVariant))
         }
@@ -171,7 +172,7 @@ class CollectorActivity : AppCompatActivity() {
                 this.text = text
                 this.textSize = size
                 setTextColor(color(textColor))
-                lineSpacingMultiplier = 1.1f
+                setLineSpacing(0f, 1.1f)
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { topMargin = marginTop },
@@ -231,7 +232,8 @@ class CollectorActivity : AppCompatActivity() {
     // ---------- 频道页 ----------
 
     private fun channelsPage(body: LinearLayout) {
-        if (client == null) {
+        val c = client
+        if (c == null) {
             card(body) { sc ->
                 line(sc, "未登录", com.example.aiphotoapp.R.color.onSurface, 15f)
                 line(sc, "需要 Telegram 账号才能看到频道列表，先在设置页完成登录。", com.example.aiphotoapp.R.color.onSurfaceVariant, 13f)
@@ -245,14 +247,14 @@ class CollectorActivity : AppCompatActivity() {
             currentList = list
             renderList()
             if (channels.isEmpty()) line(sc, "频道加载中…（点下方刷新）", com.example.aiphotoapp.R.color.onSurfaceVariant, 13f)
-            button(sc, "刷新频道，重新拉取最近聊天") { client.loadChannels() }
+            button(sc, "刷新频道，重新拉取最近聊天") { c.loadChannels() }
         }
         card(body) { sc ->
             when {
                 selSource == 0L && selTarget == 0L -> line(sc, "用法：点两个频道 → 先点的为来源，后点的为目标。", com.example.aiphotoapp.R.color.onSurface, 14f)
-                selTarget == 0L -> line(sc, "已选来源（$sourceName()），再点一个频道作为目标。", com.example.aiphotoapp.R.color.onPrimaryContainer, 14f)
+                selTarget == 0L -> line(sc, "已选来源（${sourceName()}），再点一个频道作为目标。", com.example.aiphotoapp.R.color.onPrimaryContainer, 14f)
                 else -> {
-                    line(sc, "来源：$sourceName()", com.example.aiphotoapp.R.color.primary, 14f)
+                    line(sc, "来源：${sourceName()}", com.example.aiphotoapp.R.color.primary, 14f)
                     line(sc, "目标：${channels[selTarget]}", com.example.aiphotoapp.R.color.primary, 14f)
                     button(sc, "创建采集规则") {
                         val name = sourceName()
@@ -507,7 +509,7 @@ class CollectorActivity : AppCompatActivity() {
         }
         card(body) { sc ->
             titleView(sc, "崩溃日志")
-            val logView = TextView(this).apply { textSize = 11f; setTextColor(color(com.example.aiphotoapp.R.color.error)); lineSpacingMultiplier = 1.2f }
+            val logView = TextView(this).apply { textSize = 11f; setTextColor(color(com.example.aiphotoapp.R.color.error)); setLineSpacing(0f, 1.2f) }
             val content = runCatching { File(filesDir, "crash.log").readText() }.getOrNull() ?: ""
             logView.text = content.ifEmpty { "（无崩溃记录）" }
             sc.addView(logView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 6.dp() })

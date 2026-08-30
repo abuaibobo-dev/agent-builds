@@ -9,5 +9,6 @@ object CollectorRuntime {
     @Volatile var db: CollectorDatabase? = null
     @Volatile var telegram: TelegramManager? = null
     @Volatile var engine: SyncEngine? = null
+    @Volatile var engineMsg = ""
     val activeRuleId = AtomicLong(0L)
 }
