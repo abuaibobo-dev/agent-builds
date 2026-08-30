@@ -32,7 +32,7 @@ class SyncEngineTest {
         override fun historyPage(chatId: Long, fromMessageId: Long, limit: Int): JSONObject {
             val start = if (fromMessageId == 0L) 0 else ids.indexOfFirst { it <= fromMessageId } + 1
             val arr = JSONArray()
-            ids.drop(start).take(100).forEach { arr.put(msg(it)) }
+            ids.drop(start).take(limit).forEach { arr.put(msg(it)) }
             return JSONObject().put("messages", arr)
         }
 
@@ -74,24 +74,23 @@ class SyncEngineTest {
 
     @Test
     fun `chunks large pages into batches of 50 and records all copies`() = runBlocking<Unit> {
-        val backend = FakeBackend((0L..119L).toList())
+        val backend = FakeBackend((1L..120L).toList())
         val dao = db.collectorDao()
+        val id = dao.insertRule(rule())
         val engine = SyncEngine(backend, dao)
-        engine.runForTest(rule())
-        val rid = dao.getAllRules().first().id
+        engine.runForTest(rule().copy(id = id))
 
         assertEquals(listOf(50, 50, 20), backend.batchSizes)
-        assertEquals(120, dao.countCopiedMessages(rid))
+        assertEquals(120, dao.countCopiedMessages(id))
     }
 
     @Test
     fun `resume with cursor skips already copied messages`() = runBlocking<Unit> {
-        val backend = FakeBackend((0L..49L).toList())
         val dao = db.collectorDao()
         val firstId = dao.insertRule(rule())
-        SyncEngine(backend, dao).runForTest(rule().copy(id = firstId))
+        SyncEngine(FakeBackend((1L..50L).toList()), dao).runForTest(rule().copy(id = firstId))
 
-        val backend2 = FakeBackend((0L..49L).toList())
+        val backend2 = FakeBackend((1L..50L).toList())
         val engine2 = SyncEngine(backend2, dao)
         engine2.runForTest(rule().copy(id = firstId))
 
@@ -101,16 +100,16 @@ class SyncEngineTest {
 
     @Test
     fun `failed batch falls back per message and only successes are recorded`() = runBlocking<Unit> {
-        val backend = FakeBackend((0L..9L).toList(), batchFailures = 1)
+        val backend = FakeBackend((1L..10L).toList(), batchFailures = 1)
         val dao = db.collectorDao()
         val id = dao.insertRule(rule())
         SyncEngine(backend, dao).runForTest(rule().copy(id = id))
 
         assertEquals(10, dao.countCopiedMessages(id))
-        assertEquals(10, backend.batchSizes.size)
+        assertEquals(11, backend.batchSizes.size)
         assertEquals(10, backend.batchSizes[0])
         assertTrue(backend.batchSizes.drop(1).all { it == 1 })
-        for (sourceId in 0L..9L) {
+        for (sourceId in 1L..10L) {
             val copied = dao.findCopiedMessage(id, 1L, sourceId)!!
             assertTrue("target must be > 0 for $sourceId", copied.targetMessageId > 0L)
         }
