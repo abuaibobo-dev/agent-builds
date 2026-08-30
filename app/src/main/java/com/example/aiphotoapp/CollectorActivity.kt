@@ -175,8 +175,8 @@ class CollectorActivity : AppCompatActivity() {
             radius = 12.dp.toFloat()
             cardElevation = 0f
             strokeWidth = if (isSource || isTarget) 0 else 1.dp
-            strokeColor = ColorStateList.valueOf(color(R.color.outline))
-            cardBackgroundColor = ColorStateList.valueOf(bg)
+            setStrokeColor(ColorStateList.valueOf(color(R.color.outline)))
+            setCardBackgroundColor(ColorStateList.valueOf(bg))
             val row = LinearLayout(this@CollectorActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(12.dp, 10.dp, 12.dp, 10.dp)
@@ -453,8 +453,8 @@ class CollectorActivity : AppCompatActivity() {
             radius = 16.dp.toFloat()
             cardElevation = 0f
             strokeWidth = 1.dp
-            strokeColor = ColorStateList.valueOf(color(R.color.outline))
-            cardBackgroundColor = ColorStateList.valueOf(color(R.color.surface))
+            setStrokeColor(ColorStateList.valueOf(color(R.color.outline)))
+            setCardBackgroundColor(ColorStateList.valueOf(color(R.color.surface)))
             setContentPadding(16.dp, 8.dp, 16.dp, 8.dp)
             addView(inner)
             body.addView(this, LP.apply { topMargin = 10.dp })
@@ -476,16 +476,13 @@ class CollectorActivity : AppCompatActivity() {
     private fun input(container: LinearLayout, hint: String, value: String? = null): TextInputEditText {
         val edit = TextInputEditText(this).apply {
             if (value != null) setText(value)
-            singleLine = true
+            setSingleLine(true)
         }
         val layout = TextInputLayout(this).apply {
             setHint(hint)
             isHintEnabled = true
             setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE)
-            setBoxCornerRadiusTopStart(12.dp.toFloat())
-            setBoxCornerRadiusTopEnd(12.dp.toFloat())
-            setBoxCornerRadiusBottomStart(12.dp.toFloat())
-            setBoxCornerRadiusBottomEnd(12.dp.toFloat())
+            setBoxCornerRadii(12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat())
             addView(edit)
         }
         container.addView(layout, LP.apply { topMargin = 8.dp })
@@ -500,7 +497,7 @@ class CollectorActivity : AppCompatActivity() {
             minimumHeight = 0; minHeight = 0
             when (kind) {
                 K_FILLED -> { backgroundTintList = ColorStateList.valueOf(color(R.color.primary)); setTextColor(color(R.color.onPrimary)) }
-                K_OUTLINED -> { backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT); setTextColor(color(R.color.primary)); strokeColor = ColorStateList.valueOf(color(R.color.outline)); strokeWidth = 1.dp }
+                K_OUTLINED -> { backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT); setTextColor(color(R.color.primary)); setStrokeColor(ColorStateList.valueOf(color(R.color.outline))); strokeWidth = 1.dp }
                 else -> { backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT); setTextColor(color(R.color.primary)) }
             }
             setOnClickListener { action() }
@@ -530,15 +527,12 @@ class CollectorActivity : AppCompatActivity() {
     }
 
     private fun inputDialog(title: String, hint: String, okLabel: String, onOk: (String) -> Unit) {
-        val edit = TextInputEditText(this).apply { singleLine = true }
+        val edit = TextInputEditText(this).apply { setSingleLine(true) }
         val layout = TextInputLayout(this).apply {
             setHint(hint)
             isHintEnabled = true
             setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE)
-            setBoxCornerRadiusTopStart(12.dp.toFloat())
-            setBoxCornerRadiusTopEnd(12.dp.toFloat())
-            setBoxCornerRadiusBottomStart(12.dp.toFloat())
-            setBoxCornerRadiusBottomEnd(12.dp.toFloat())
+            setBoxCornerRadii(12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat(), 12.dp.toFloat())
             addView(edit)
         }
         val wrap = LinearLayout(this).apply {
