@@ -137,7 +137,7 @@ class SyncEngine(
         success += first.filter { it.second > 0L }
         var failed = first.filter { it.second <= 0L }.map { it.first }
 
-        // 失败的逐条重试（最多 2 轮，避免一条坏消息拖垮整批）
+        // 失败的批量重试（最多 2 轮），随后逐条补救，隔离单条坏消息
         var attempt = 0
         while (failed.isNotEmpty() && attempt < 2) {
             Thread.sleep(1500)
@@ -145,6 +145,15 @@ class SyncEngine(
             success += retried.filter { it.second > 0L }
             failed = retried.filter { it.second <= 0L }.map { it.first }
             attempt++
+        }
+        if (failed.isNotEmpty()) {
+            val repaired = ArrayList<Pair<Long, Long>>()
+            for (f in failed) {
+                val r = doCopy(rule, listOf(f))
+                r.firstOrNull { it.second > 0L }?.let { repaired += it }
+            }
+            success += repaired
+            failed = failed.filter { f -> repaired.none { it.first == f } }
         }
         if (failed.isNotEmpty()) {
             log(rule.id, "ERROR", "复制失败将跳过（本次扫描不重试）：${failed.take(10)}")

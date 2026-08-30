@@ -106,9 +106,10 @@ class SyncEngineTest {
         SyncEngine(backend, dao).runForTest(rule().copy(id = id))
 
         assertEquals(10, dao.countCopiedMessages(id))
-        assertEquals(11, backend.batchSizes.size)
+        assertEquals(12, backend.batchSizes.size)
         assertEquals(10, backend.batchSizes[0])
-        assertTrue(backend.batchSizes.drop(1).all { it == 1 })
+        assertEquals(10, backend.batchSizes[1])
+        assertTrue(backend.batchSizes.drop(2).all { it == 1 })
         for (sourceId in 1L..10L) {
             val copied = dao.findCopiedMessage(id, 1L, sourceId)!!
             assertTrue("target must be > 0 for $sourceId", copied.targetMessageId > 0L)
