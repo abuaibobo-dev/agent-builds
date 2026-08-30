@@ -3,10 +3,12 @@ package com.example.aiphotoapp
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -18,21 +20,32 @@ import com.example.aiphotoapp.data.CollectorDatabase
 import com.example.aiphotoapp.data.SyncRule
 import com.example.aiphotoapp.sync.SyncEngine
 import com.example.aiphotoapp.telegram.TelegramManager
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.shape.ShapeAppearanceModel
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.concurrent.thread
+import kotlin.math.max
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 class CollectorActivity : AppCompatActivity() {
-    private lateinit var content: LinearLayout
+    private lateinit var tvTitle: TextView
     private lateinit var status: TextView
+    private lateinit var flContent: FrameLayout
     private val channels = linkedMapOf<Long, String>()
-    private var authFieldsAdded = false
+    private var currentChannelList: LinearLayout? = null
+    private var loginPhone = ""
     private var authPending = false
     private var selectedSourceChatId: Long? = null
     private var selectedTargetChatId: Long? = null
+    private var runtimeExceptionHandler: ((Throwable) -> Unit)? = null
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -48,8 +61,6 @@ class CollectorActivity : AppCompatActivity() {
             runCatching { crashFile.writeText("runtime: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}") }
         }
     }
-
-    private var runtimeExceptionHandler: ((Throwable) -> Unit)? = null
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -70,89 +81,141 @@ class CollectorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         installCrashHandler()
         requestNotificationPermissionIfNeeded()
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF0F0F0F.toInt()) }
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(8, 8, 8, 4) }
-        listOf("频道管理", "运行总览", "采集规则", "设置").forEachIndexed { index, title ->
-            tabs.addView(Button(this).apply {
-                text = title
-                setTextColor(0xFFFFFFFF.toInt())
-                setBackgroundResource(R.drawable.bg_btn_outline)
-                backgroundTintList = null
-                setOnClickListener { showTab(index) }
-            }, LinearLayout.LayoutParams(0, 48.dp, 1f).apply { if (index > 0) marginStart = 6.dp })
+        setContentView(R.layout.activity_collector)
+        tvTitle = findViewById(R.id.tv_title)
+        status = findViewById(R.id.tv_status)
+        flContent = findViewById(R.id.fl_content)
+        val nav = findViewById<BottomNavigationView>(R.id.nav)
+        nav.setOnItemSelectedListener { item ->
+            showTab(
+                when (item.itemId) {
+                    R.id.nav_tab_overview -> 1
+                    R.id.nav_tab_rules -> 2
+                    R.id.nav_tab_settings -> 3
+                    else -> 0
+                }
+            )
+            true
         }
-        root.addView(tabs)
-        status = TextView(this).apply { setTextColor(0xFFB3B3B3.toInt()); text = "未登录"; setPadding(16, 8, 16, 8) }
-        root.addView(status)
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(root)
+        nav.selectedItemId = R.id.nav_tab_channels
+        status.text = "未登录"
+        status.setTextColor(color(R.color.onSurfaceVariant))
         showTab(0)
     }
 
     private fun showTab(index: Int) {
-        content.removeAllViews()
+        tvTitle.text = listOf("频道管理", "运行总览", "采集规则", "设置")[index]
+        flContent.removeAllViews()
+        val screenW = resources.displayMetrics.widthPixels
+        val pad = max(16.dp, (screenW - 540.dp) / 2)
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, 4.dp, pad, 24.dp) }
         when (index) {
-            0 -> channelManagement()
-            1 -> overview()
-            2 -> rules()
-            else -> settings()
+            0 -> channelManagement(body)
+            1 -> overview(body)
+            2 -> rules(body)
+            else -> settings(body)
         }
+        flContent.addView(ScrollView(this).apply { addView(body) })
     }
 
-    private fun channelManagement() {
-        title("频道管理")
-        val apiId = input("Telegram API ID")
-        val apiHash = input("Telegram API Hash")
-        val phone = input("手机号，例如 +86138...")
-        authFieldsAdded = false
-        val login = button("登录 / 初始化")
-        val isLoggedIn = client != null
-        if (isLoggedIn) {
-            apiId.visibility = android.view.View.GONE
-            apiHash.visibility = android.view.View.GONE
-            phone.visibility = android.view.View.GONE
-            login.text = "刷新频道列表"
-        }
-        content.addView(apiId); content.addView(apiHash); content.addView(phone); content.addView(login)
-        val channelList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 16, 8, 8) }
-        content.addView(channelList)
-        login.setOnClickListener {
-            val client = client
-            if (!isLoggedIn) {
-                val id = apiId.text.toString().trim().toIntOrNull()
-                val hash = apiHash.text.toString().trim()
-                if (id == null || hash.isEmpty()) { status.text = "请填写 API ID/API Hash"; return@setOnClickListener }
-                val newClient = TelegramManager(this, id, hash)
-                CollectorRuntime.telegram = newClient
-                bindClient(newClient, channelList, phone)
-                newClient.start()
-                status.text = "TDLib 已启动，等待授权"
-            } else if (client != null) {
-                channels.clear()
-                channelList.removeAllViews()
-                client.loadChannels()
-                status.text = "刷新频道列表"
+    // ---------- 页面构建 ----------
+
+    private fun channelManagement(body: LinearLayout) {
+        val loggedIn = client != null
+        section(body) { sc ->
+            label(sc, if (loggedIn) "已登录 · 账号数据已存本机" else "登录 Telegram", 15f, R.color.onSurface)
+            if (loggedIn) {
+                button(sc, "刷新频道列表") {
+                    channels.clear()
+                    currentChannelList?.let { renderChannels(it) }
+                    client?.loadChannels()
+                    status.text = "刷新频道列表"
+                }
+            } else {
+                val apiId = input(sc, "Telegram API ID")
+                val apiHash = input(sc, "Telegram API Hash")
+                val phone = input(sc, "手机号，例如 +86138...")
+                button(sc, "登录 / 初始化") {
+                    val id = apiId.text.toString().trim().toIntOrNull()
+                    val hash = apiHash.text.toString().trim()
+                    if (id == null || hash.isEmpty()) { status.text = "请填写 API ID / API Hash"; return@button }
+                    loginPhone = phone.text.toString().trim()
+                    val newClient = TelegramManager(this, id, hash)
+                    CollectorRuntime.telegram = newClient
+                    bindClient(newClient)
+                    newClient.start()
+                    status.text = "TDLib 已启动，等待授权"
+                }
             }
         }
-        if (isLoggedIn) {
-            client?.let { bindClient(it, channelList, phone) }
+        section(body) { sc ->
+            label(sc, "频道列表 — 点一个选来源，再点另一个选目标", 13f, R.color.onSurfaceVariant)
+            val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            sc.addView(list, LP.apply { topMargin = 4.dp })
+            renderChannels(list)
+        }
+        if (loggedIn) {
+            client?.let { bindClient(it) }
+            if (channels.isEmpty()) client?.loadChannels()
         }
     }
 
-    private fun bindClient(client: TelegramManager, channelList: LinearLayout, phone: EditText) {
-        client.addListener { update ->
-            runOnUiThread {
+    private fun renderChannels(list: LinearLayout) {
+        currentChannelList = list
+        list.removeAllViews()
+        channels.entries.forEach { (id, name) -> list.addView(channelRow(name, id), LP.apply { topMargin = 6.dp }) }
+    }
+
+    private fun channelRow(name: String, id: Long): MaterialCardView {
+        val isTarget = selectedTargetChatId == id
+        val isSource = selectedSourceChatId == id
+        val bg = if (isTarget) color(R.color.primary) else if (isSource) color(R.color.primaryContainer) else color(R.color.surfaceVariant)
+        val fg = if (isTarget) color(R.color.onPrimary) else if (isSource) color(R.color.onPrimaryContainer) else color(R.color.onSurface)
+        return MaterialCardView(this).apply {
+            radius = 12.dp.toFloat()
+            cardElevation = 0f
+            strokeWidth = if (isSource || isTarget) 0 else 1.dp
+            strokeColor = ColorStateList.valueOf(color(R.color.outline))
+            cardBackgroundColor = ColorStateList.valueOf(bg)
+            val row = LinearLayout(this@CollectorActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                addView(
+                    TextView(this@CollectorActivity).apply {
+                        text = name; setTextColor(fg); textSize = 15f
+                        typeface = if (isTarget || isSource) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                    },
+                    LinearLayout.LayoutParams(0, -2, 1f)
+                )
+                if (isSource) addView(badge("来源", R.color.onPrimaryContainer, R.color.primaryContainer))
+                if (isTarget) addView(badge("目标", R.color.onPrimary, R.color.primary))
+            }
+            addView(row)
+            setOnClickListener {
+                if (selectedSourceChatId == null || selectedSourceChatId == id || id == selectedTargetChatId) {
+                    selectedSourceChatId = id
+                    selectedTargetChatId = null
+                    status.text = "来源已选：$name，继续点击目标频道"
+                } else {
+                    selectedTargetChatId = id
+                    status.text = "目标已选：$name"
+                }
+                currentChannelList?.let { renderChannels(it) }
+            }
+        }
+    }
+
+    private fun bindClient(client: TelegramManager) {
+        client.bindUiListener { update ->
+            onUi {
                 try {
                     val type = update.optString("@type")
-                    if (type == "updateAuthorizationState") handleAuth(client, update.optJSONObject("authorization_state"), phone.text.toString())
+                    if (type == "updateAuthorizationState") handleAuth(client, update.optJSONObject("authorization_state"))
                     if (type == "chat") {
                         val chatType = update.optJSONObject("type")
-                        if (chatType?.optString("@type") != "chatTypeSupergroup" || !chatType.optBoolean("is_channel")) return@runOnUiThread
-                        val idValue = update.optLong("id")
-                        val name = update.optString("title", idValue.toString())
-                        channels[idValue] = name
-                        renderChannels(channelList)
+                        if (chatType?.optString("@type") != "chatTypeSupergroup" || !chatType.optBoolean("is_channel")) return@onUi
+                        channels[update.optLong("id")] = update.optString("title", update.optLong("id").toString())
+                        currentChannelList?.let { renderChannels(it) }
                     }
                     if (type == "chats") {
                         update.optJSONArray("chat_ids")?.let { ids ->
@@ -168,106 +231,102 @@ class CollectorActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderChannels(channelList: LinearLayout) {
-        channelList.removeAllViews()
-        channelList.addView(TextView(this).apply {
-            setTextColor(0xFFB3B3B3.toInt())
-            text = "点击一次设为来源，再点击另一个设为目标"
-        })
-        channels.entries.forEach { entry ->
-            channelList.addView(button("${entry.value} (${entry.key})") {
-                if (selectedSourceChatId == null || selectedSourceChatId == entry.key || entry.key == selectedTargetChatId) {
-                    selectedSourceChatId = entry.key
-                    selectedTargetChatId = null
-                    status.text = "来源已选：${entry.value}，继续点击目标频道"
-                } else {
-                    selectedTargetChatId = entry.key
-                    status.text = "目标已选：${entry.value}"
-                }
-            })
-        }
-    }
-
-    private fun handleAuth(client: TelegramManager, state: JSONObject?, phone: String) {
+    private fun handleAuth(client: TelegramManager, state: JSONObject?) {
         when (state?.optString("@type")) {
-            "authorizationStateWaitPhoneNumber" -> client.setPhone(phone)
+            "authorizationStateWaitPhoneNumber" -> client.setPhone(loginPhone)
             "authorizationStateReady" -> { status.text = "已登录（账号数据已存本机）"; client.loadChannels() }
             "authorizationStateWaitCode" -> {
                 if (authPending) {
                     authPending = false
                     status.text = "验证码无效，已重新输入"
-                } else {
-                    addAuthField("Telegram 验证码（登录码）", client) { client.setCode(it) }
                 }
+                promptCode(client)
             }
-            "authorizationStateWaitPassword" -> addAuthField("Telegram 2FA 密码", client) { client.setPassword(it) }
+            "authorizationStateWaitPassword" -> promptPassword(client)
             "authorizationStateWaitTdlibParameters" -> status.text = "TDLib 参数配置中"
             "authorizationStateWaitEncryptionKey" -> status.text = "正在解密本地 session"
         }
     }
 
-    private fun addAuthField(hint: String, client: TelegramManager, submit: (String) -> Unit) {
-        status.text = "请输入 $hint"
-        if (authFieldsAdded) return
-        authFieldsAdded = true
-        val field = input(hint)
-        val submitButton = button("提交")
-        content.addView(field)
-        content.addView(submitButton)
-        submitButton.setOnClickListener {
-            authFieldsAdded = false
+    private fun promptCode(client: TelegramManager) {
+        inputDialog("Telegram 登录验证码", "输入收到的验证码", "提交") { code ->
+            if (code.isEmpty()) return@inputDialog
             authPending = true
             status.text = "正在校验，请稍候…"
-            submit(field.text.toString().trim())
+            client.setCode(code)
         }
     }
 
-    private fun overview() {
-        title("运行总览")
-        val info = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); setPadding(16, 8, 16, 8) }
-        content.addView(info)
-        content.addView(button("刷新") { showTab(1) })
-        val pause = button("暂停") { engine()?.pause(); status.text = "已暂停" }
-        val resume = button("继续") { engine()?.resume(); status.text = "继续采集" }
-        val stop = button("停止并退出登录") { stopSync() }
-        content.addView(pause); content.addView(resume); content.addView(stop)
-        thread {
-            val ruleId = CollectorRuntime.activeRuleId.get()
-            val dao = db.collectorDao()
-            val cursor = runBlocking { if (ruleId > 0) dao.getCursor(ruleId) else null }
-            val copied = runBlocking { if (ruleId > 0) dao.countCopiedMessages(ruleId) else 0 }
-            val errors = runBlocking { if (ruleId > 0) dao.countLogs(ruleId, "ERROR") else 0 }
-            val logs = runBlocking { if (ruleId > 0) dao.getRecentLogs(ruleId, 20) else emptyList() }
-            runOnUiThread {
-                info.text = buildString {
-                    append("当前规则 ID：").append(if (ruleId > 0) ruleId else "无").append('\n')
-                    append("状态：").append(cursor?.status ?: "IDLE").append('\n')
-                    append("扫描位置：").append(cursor?.scanMessageId ?: 0).append('\n')
-                    append("已复制条数：").append(copied).append('\n')
-                    append("错误条数：").append(errors).append('\n')
-                    append('\n').append("最近日志：").append('\n')
-                    logs.forEach { log -> append(time(log.createdAt)).append(" [").append(log.level).append("] ").append(log.message).append('\n') }
+    private fun promptPassword(client: TelegramManager) {
+        inputDialog("Telegram 2FA 密码", "输入两步验证密码", "提交") { pw ->
+            if (pw.isEmpty()) return@inputDialog
+            status.text = "正在校验，请稍候…"
+            client.setPassword(pw)
+        }
+    }
+
+    private fun overview(body: LinearLayout) {
+        section(body) { sc ->
+            label(sc, "运行状态", 15f, R.color.onSurface)
+            val info = TextView(this).apply {
+                setTextColor(color(R.color.onSurfaceVariant)); textSize = 12f
+                typeface = Typeface.MONOSPACE; includeFontPadding = false
+                setPadding(0, 6.dp, 0, 6.dp)
+            }
+            sc.addView(info, LP)
+            thread {
+                val ruleId = CollectorRuntime.activeRuleId.get()
+                val dao = db.collectorDao()
+                val cursor = runBlocking { if (ruleId > 0) dao.getCursor(ruleId) else null }
+                val copied = runBlocking { if (ruleId > 0) dao.countCopiedMessages(ruleId) else 0 }
+                val errors = runBlocking { if (ruleId > 0) dao.countLogs(ruleId, "ERROR") else 0 }
+                val logs = runBlocking { if (ruleId > 0) dao.getRecentLogs(ruleId, 20) else emptyList() }
+                onUi {
+                    info.text = buildString {
+                        append("当前规则 ID：").append(if (ruleId > 0) ruleId else "无").append('\n')
+                        append("状态：").append(cursor?.status ?: "IDLE").append('\n')
+                        append("扫描位置：").append(cursor?.scanMessageId ?: 0).append('\n')
+                        append("已复制条数：").append(copied).append('\n')
+                        append("错误条数：").append(errors).append('\n')
+                        append('\n').append("最近日志：").append('\n')
+                        logs.forEach { log -> append(time(log.createdAt)).append(" [").append(log.level).append("] ").append(log.message).append('\n') }
+                    }
                 }
+            }
+        }
+        section(body) { sc ->
+            label(sc, "控制", 15f, R.color.onSurface)
+            val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            button(row1, "暂停", K_FILLED) { engine()?.pause(); status.text = "已暂停" }
+            button(row1, "继续", K_FILLED) { engine()?.resume(); status.text = "继续采集" }
+            sc.addView(row1, LP.apply { topMargin = 8.dp })
+            button(sc, "停止并退出登录", K_OUTLINED) {
+                confirmDialog("停止采集", "停止后当前规则暂停，账号将退出登录。确定？") { stopSync() }
             }
         }
     }
 
-    private fun rules() {
-        title("采集规则")
-        val source = input("来源频道 chat ID")
-        val target = input("目标频道 chat ID")
-        selectedSourceChatId?.let { source.setText(it.toString()) }
-        selectedTargetChatId?.let { target.setText(it.toString()) }
-        val start = button("开始历史采集")
-        content.addView(source); content.addView(target); content.addView(start)
-        start.setOnClickListener {
-            val s = source.text.toString().toLongOrNull(); val t = target.text.toString().toLongOrNull()
-            if (s == null || t == null || s == t) { status.text = "来源/目标 ID 无效，且不能相同"; return@setOnClickListener }
-            startSync(SyncRule(sourceChatId = s, targetChatId = t, keepAlbum = true))
+    private fun rules(body: LinearLayout) {
+        section(body) { sc ->
+            label(sc, "新建规则", 15f, R.color.onSurface)
+            val source = input(sc, "来源频道 chat ID")
+            val target = input(sc, "目标频道 chat ID")
+            selectedSourceChatId?.let { source.setText(it.toString()) }
+            selectedTargetChatId?.let { target.setText(it.toString()) }
+            button(sc, "开始历史采集") {
+                val s = source.text.toString().toLongOrNull()
+                val t = target.text.toString().toLongOrNull()
+                if (s == null || t == null || s == t) { status.text = "来源/目标 ID 无效，且不能相同"; return@button }
+                val rule = SyncRule(sourceChatId = s, targetChatId = t, keepAlbum = true)
+                confirmDialog("开始历史采集", "来源：$s\n目标：$t\n类型：${rule.mediaTypes}\n保留说明：${rule.keepCaption}\n\n确认开始？") { startSync(rule) }
+            }
         }
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 16, 0, 8) }
-        content.addView(list)
-        refreshRuleList(list)
+        section(body) { sc ->
+            label(sc, "已保存规则", 15f, R.color.onSurface)
+            val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            sc.addView(list, LP.apply { topMargin = 4.dp })
+            refreshRuleList(list)
+        }
     }
 
     private fun refreshRuleList(list: LinearLayout) {
@@ -283,31 +342,83 @@ class CollectorActivity : AppCompatActivity() {
                     Triple(rule, line, cursor?.status)
                 }
             }
-            runOnUiThread {
+            onUi {
                 list.removeAllViews()
                 if (rows.isEmpty()) {
-                    list.addView(TextView(this).apply { setTextColor(0xFFB3B3B3.toInt()); text = "暂无规则，填好上面信息点开始采集" })
-                    return@runOnUiThread
+                    list.addView(textView("暂无规则，填好上面信息点开始采集", R.color.onSurfaceVariant, 13f))
+                    return@onUi
                 }
-                rows.forEach { (rule, line, status) ->
-                    list.addView(TextView(this).apply {
-                        setTextColor(0xFFFFFFFF.toInt())
-                        text = line
-                        setPadding(16, 12, 16, 4)
-                    }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+                rows.forEach { (rule, line, st) ->
+                    list.addView(
+                        textView(line, if (st == "RUNNING" || st == "SCANNING" || st == "COPYING") R.color.primary else R.color.onSurface, 13f),
+                        LP.apply { topMargin = 10.dp }
+                    )
                     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                    val continueLabel = if (status == "RUNNING" || status == "SCANNING" || status == "COPYING") "再次运行" else "继续"
-                    row.addView(button(continueLabel) { startSync(rule) }, lp)
-                    row.addView(button("清空游标") { clearCursor(rule.id); refreshRuleList(list) }, lp)
-                    row.addView(button("删除") { deleteRule(rule); refreshRuleList(list) }, lp)
-                    list.addView(row)
+                    val continueLabel = if (st == "RUNNING" || st == "SCANNING" || st == "COPYING") "再次运行" else "继续"
+                    button(row, continueLabel, K_FILLED) { startSync(rule) }
+                    button(row, "清空游标", K_TEXT) {
+                        confirmDialog("清空游标", "规则 #${rule.id} 将重新扫描历史（已复制的不重复复制）。确定？") {
+                            clearCursor(rule.id); refreshRuleList(list)
+                        }
+                    }
+                    button(row, "删除", K_TEXT) {
+                        confirmDialog("删除规则", "将删除规则 #${rule.id} 及其复制记录与日志。确定？") {
+                            deleteRule(rule); refreshRuleList(list)
+                        }
+                    }
+                    list.addView(row, LP.apply { topMargin = 4.dp })
                 }
-                list.addView(TextView(this).apply { setTextColor(0xFFB3B3B3.toInt()); text = "提示：清空游标会重新扫描历史，但已复制的不重复复制。"; setPadding(16, 12, 16, 4) })
+                list.addView(textView("提示：清空游标会重新扫描历史，已复制的不重复复制。", R.color.onSurfaceVariant, 13f), LP)
             }
         }
     }
 
-    private val lp by lazy { LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = 6.dp; marginEnd = 6.dp } }
+    private fun settings(body: LinearLayout) {
+        section(body) { sc ->
+            label(sc, "关于", 15f, R.color.onSurface)
+            sc.addView(textView(
+                "Session 数据保存在本机 files/tdlib-db。\n清理后台后采集会继续运行（前台服务）。\n通知权限已自动请求；拒绝后后台仍可采集，仅不显示常驻通知。",
+                R.color.onSurfaceVariant, 13f
+            ), LP)
+        }
+        section(body) { sc ->
+            label(sc, "崩溃日志", 15f, R.color.onSurface)
+            val crashFile = java.io.File(filesDir, "crash.log")
+            val logView = textView(if (crashFile.exists()) crashFile.readText() else "（无）", R.color.error, 12f)
+            sc.addView(logView, LP)
+            button(sc, "清除崩溃日志", K_TEXT) {
+                confirmDialog("清除", "确定删除 crash.log 内容？") {
+                    crashFile.delete(); logView.text = "（无）"; status.text = "已清除"
+                }
+            }
+        }
+    }
+
+    private fun startSync(rule: SyncRule) {
+        val c = client ?: run { status.text = "先登录 Telegram"; return }
+        ContextCompat.startForegroundService(this, Intent(this, CollectorService::class.java).setAction(CollectorService.ACTION_START))
+        val engine = engine() ?: SyncEngine(c, db.collectorDao()).also { CollectorRuntime.engine = it }
+        engine.start(rule, onStarted = { id -> CollectorRuntime.activeRuleId.set(id) }, onUpdate = { message -> onUi { status.text = message } })
+        status.text = "已开始：从最早消息扫描（可在后台继续）"
+        navToRules()
+    }
+
+    private fun navToRules() {
+        findViewById<BottomNavigationView>(R.id.nav).selectedItemId = R.id.nav_tab_rules
+    }
+
+    private fun stopSync() {
+        engine()?.stop()
+        CollectorRuntime.activeRuleId.set(0L)
+        client?.close()
+        CollectorRuntime.telegram = null
+        CollectorRuntime.engine = null
+        ContextCompat.startForegroundService(this, Intent(this, CollectorService::class.java).setAction(CollectorService.ACTION_STOP))
+        status.text = "已停止并退出登录"
+        findViewById<BottomNavigationView>(R.id.nav).selectedItemId = R.id.nav_tab_channels
+    }
+
+    private fun engine() = CollectorRuntime.engine
 
     private fun clearCursor(ruleId: Long) {
         thread { runBlocking { db.collectorDao().resetCursor(ruleId) } }
@@ -327,43 +438,135 @@ class CollectorActivity : AppCompatActivity() {
         status.text = "已删除规则 #${rule.id}"
     }
 
-    private fun startSync(rule: SyncRule) {
-        val client = client ?: run { status.text = "先登录 Telegram"; return }
-        ContextCompat.startForegroundService(this, Intent(this, CollectorService::class.java).setAction(CollectorService.ACTION_START))
-        val engine = engine() ?: SyncEngine(client, db.collectorDao()).also { CollectorRuntime.engine = it }
-        engine.start(rule, onStarted = { id -> CollectorRuntime.activeRuleId.set(id) }, onUpdate = { message -> runOnUiThread { status.text = message } })
-        status.text = "已开始：从最早消息扫描（可在后台继续）"
-        showTab(2)
+    // ---------- 通用组件 ----------
+
+    companion object {
+        private const val K_FILLED = 0
+        private const val K_OUTLINED = 1
+        private const val K_TEXT = 2
     }
 
-    private fun stopSync() {
-        engine()?.stop()
-        CollectorRuntime.activeRuleId.set(0L)
-        client?.close()
-        CollectorRuntime.telegram = null
-        CollectorRuntime.engine = null
-        ContextCompat.startForegroundService(this, Intent(this, CollectorService::class.java).setAction(CollectorService.ACTION_STOP))
-        status.text = "已停止并退出登录"
-        showTab(0)
+    private fun section(body: LinearLayout, block: (LinearLayout) -> Unit): MaterialCardView {
+        val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        block(inner)
+        return MaterialCardView(this).apply {
+            radius = 16.dp.toFloat()
+            cardElevation = 0f
+            strokeWidth = 1.dp
+            strokeColor = ColorStateList.valueOf(color(R.color.outline))
+            cardBackgroundColor = ColorStateList.valueOf(color(R.color.surface))
+            setContentPadding(16.dp, 8.dp, 16.dp, 8.dp)
+            addView(inner)
+            body.addView(this, LP.apply { topMargin = 10.dp })
+        }
     }
 
-    private fun engine() = CollectorRuntime.engine
-
-    private fun settings() {
-        title("设置")
-        content.addView(TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); text = "Session 数据保存在本机 files/tdlib-db。\n说明：清理后台后采集会继续运行（前台服务）。\n通知权限已自动请求；拒绝后后台仍可采集，仅不显示常驻通知。\n\n崩溃日志："; setPadding(16, 16, 16, 8) })
-        val crashFile = java.io.File(filesDir, "crash.log")
-        val logView = TextView(this).apply { setTextColor(0xFFFF6666.toInt()); text = if (crashFile.exists()) crashFile.readText() else "（无）"; setPadding(16, 4, 16, 8) }
-        content.addView(logView)
-        content.addView(button("清除崩溃日志") {
-            crashFile.delete()
-            logView.text = "（无）"
-            status.text = "已清除"
-        })
+    private fun label(container: LinearLayout, text: String, size: Float, colorRes: Int) {
+        container.addView(
+            TextView(this).apply { this.text = text; textSize = size; setTextColor(color(colorRes)) },
+            LP.apply { topMargin = 4.dp; bottomMargin = 2.dp }
+        )
     }
-    private fun title(text: String) { content.addView(TextView(this).apply { this.text = text; textSize = 26f; setTextColor(0xFFFFFFFF.toInt()); setPadding(16, 20, 16, 12) }) }
-    private fun input(hint: String) = EditText(this).apply { this.hint = hint; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFFB3B3B3.toInt()); setPadding(16, 12, 16, 12) }
-    private fun button(text: String, action: (() -> Unit)? = null) = Button(this).apply { this.text = text; setTextColor(0xFFFFFFFF.toInt()); setBackgroundResource(R.drawable.bg_btn_outline); backgroundTintList = null; action?.let { setOnClickListener { it() } } }
+
+    private fun textView(text: String, colorRes: Int, size: Float) = TextView(this).apply {
+        this.text = text; setTextColor(color(colorRes)); textSize = size
+        includeFontPadding = false
+    }
+
+    private fun input(container: LinearLayout, hint: String, value: String? = null): TextInputEditText {
+        val edit = TextInputEditText(this).apply {
+            if (value != null) setText(value)
+            singleLine = true
+        }
+        val layout = TextInputLayout(this).apply {
+            setHint(hint)
+            isHintEnabled = true
+            setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE)
+            setBoxCornerRadiusTopStart(12.dp.toFloat())
+            setBoxCornerRadiusTopEnd(12.dp.toFloat())
+            setBoxCornerRadiusBottomStart(12.dp.toFloat())
+            setBoxCornerRadiusBottomEnd(12.dp.toFloat())
+            addView(edit)
+        }
+        container.addView(layout, LP.apply { topMargin = 8.dp })
+        return edit
+    }
+
+    private fun button(container: LinearLayout, text: String, kind: Int = K_FILLED, action: () -> Unit): MaterialButton {
+        val b = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            this.text = text
+            shapeAppearanceModel = ShapeAppearanceModel.builder().setAllCornerSizes(12.dp.toFloat()).build()
+            insetTop = 0; insetBottom = 0
+            minimumHeight = 0; minHeight = 0
+            when (kind) {
+                K_FILLED -> { backgroundTintList = ColorStateList.valueOf(color(R.color.primary)); setTextColor(color(R.color.onPrimary)) }
+                K_OUTLINED -> { backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT); setTextColor(color(R.color.primary)); strokeColor = ColorStateList.valueOf(color(R.color.outline)); strokeWidth = 1.dp }
+                else -> { backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT); setTextColor(color(R.color.primary)) }
+            }
+            setOnClickListener { action() }
+        }
+        container.addView(b, LP.apply { topMargin = 8.dp })
+        return b
+    }
+
+    private fun badge(text: String, textColorRes: Int, bgColorRes: Int) = TextView(this).apply {
+        this.text = text; textSize = 11f
+        setTextColor(color(textColorRes))
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 10.dp.toFloat()
+            setColor(color(bgColorRes))
+        }
+        setPadding(10.dp, 3.dp, 10.dp, 3.dp)
+        includeFontPadding = false
+    }
+
+    private fun confirmDialog(title: String, message: String, onOk: () -> Unit) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确定") { _, _ -> onOk() }
+            .show()
+    }
+
+    private fun inputDialog(title: String, hint: String, okLabel: String, onOk: (String) -> Unit) {
+        val edit = TextInputEditText(this).apply { singleLine = true }
+        val layout = TextInputLayout(this).apply {
+            setHint(hint)
+            isHintEnabled = true
+            setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE)
+            setBoxCornerRadiusTopStart(12.dp.toFloat())
+            setBoxCornerRadiusTopEnd(12.dp.toFloat())
+            setBoxCornerRadiusBottomStart(12.dp.toFloat())
+            setBoxCornerRadiusBottomEnd(12.dp.toFloat())
+            addView(edit)
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp, 8.dp, 24.dp, 0)
+            addView(layout, LP)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(wrap)
+            .setNegativeButton("取消", null)
+            .setPositiveButton(okLabel) { _, _ -> onOk(edit.text?.toString()?.trim() ?: "") }
+            .show()
+    }
+
+    private fun onUi(block: () -> Unit) {
+        if (isFinishing || isDestroyed) return
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            block()
+        }
+    }
+
+    private fun color(res: Int) = ContextCompat.getColor(this, res)
+
+    private val LP = LinearLayout.LayoutParams(-1, -2)
+
     private val Int.dp get() = (this * resources.displayMetrics.density).toInt()
+
     private fun time(ts: Long): String = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
 }

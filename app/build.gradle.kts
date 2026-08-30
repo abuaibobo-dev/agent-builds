@@ -12,7 +12,7 @@ android {
         applicationId = "com.example.aiphotoapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1000020
+        versionCode = 1000021
         versionName = "1.0-collector-build-${project.findProperty("buildNumber") ?: "local"}"
     }
 

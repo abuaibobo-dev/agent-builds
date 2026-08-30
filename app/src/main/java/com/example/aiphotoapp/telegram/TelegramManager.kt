@@ -18,11 +18,17 @@ class TelegramManager(
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
     private val listeners = CopyOnWriteArrayList<(JSONObject) -> Unit>()
+    @Volatile
+    private var uiListener: ((JSONObject) -> Unit)? = null
     private val pending = ConcurrentHashMap<String, CompletableFuture<JSONObject>>()
     private var clientId = -1
 
     fun addListener(listener: (JSONObject) -> Unit) {
         listeners += listener
+    }
+
+    fun bindUiListener(listener: (JSONObject) -> Unit) {
+        uiListener = listener
     }
 
     fun start() {
@@ -34,6 +40,7 @@ class TelegramManager(
                 try {
                     val update = JSONObject(raw)
                     update.optString("@extra").takeIf { it.isNotEmpty() }?.let { pending.remove(it)?.complete(update) }
+                    uiListener?.invoke(update)
                     listeners.forEach { it(update) }
                 } catch (_: Exception) {
                 }
