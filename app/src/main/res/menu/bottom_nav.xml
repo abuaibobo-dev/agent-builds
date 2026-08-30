@@ -2,18 +2,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/nav_tab_channels"
-        android:icon="@drawable/ic_photo"
         android:title="频道" />
     <item
         android:id="@+id/nav_tab_overview"
-        android:icon="@drawable/ic_auto_awesome"
         android:title="总览" />
     <item
         android:id="@+id/nav_tab_rules"
-        android:icon="@drawable/ic_library"
         android:title="规则" />
     <item
         android:id="@+id/nav_tab_settings"
-        android:icon="@drawable/ic_settings"
         android:title="设置" />
 </menu>

@@ -229,7 +229,11 @@ class CollectorActivity : AppCompatActivity() {
     private fun handleAuth(client: TelegramManager, state: JSONObject?) {
         when (state?.optString("@type")) {
             "authorizationStateWaitPhoneNumber" -> client.setPhone(pendingPhone)
-            "authorizationStateReady" -> { status.text = "已登录（账号数据已存本机）"; client.loadChannels() }
+            "authorizationStateReady" -> {
+                status.text = "已登录（会话已恢复，自动刷新频道）"
+                client.loadChannels()
+                navToChannels()
+            }
             "authorizationStateWaitCode" -> {
                 if (authPending) {
                     authPending = false
@@ -386,11 +390,17 @@ class CollectorActivity : AppCompatActivity() {
                     val hash = apiHash.text.toString().trim()
                     if (id == null || hash.isEmpty()) { status.text = "请填写 API ID / API Hash"; return@button }
                     pendingPhone = phone.text.toString().trim()
-                    val newClient = TelegramManager(this, id, hash)
-                    CollectorRuntime.telegram = newClient
-                    bindClient(newClient)
-                    newClient.start()
-                    status.text = "TDLib 已启动，等待授权"
+                    try {
+                        val newClient = TelegramManager(this, id, hash)
+                        CollectorRuntime.telegram = newClient
+                        bindClient(newClient)
+                        newClient.start()
+                        status.text = "正在连接 Telegram…（若之前登录过，将自动恢复会话）"
+                    } catch (e: Throwable) {
+                        CollectorRuntime.telegram = null
+                        status.text = "连接失败：${e.message ?: e.javaClass.simpleName}"
+                        runtimeExceptionHandler?.invoke(e)
+                    }
                 }
             }
         }
@@ -425,6 +435,10 @@ class CollectorActivity : AppCompatActivity() {
 
     private fun navToRules() {
         findViewById<BottomNavigationView>(R.id.nav).selectedItemId = R.id.nav_tab_rules
+    }
+
+    private fun navToChannels() {
+        findViewById<BottomNavigationView>(R.id.nav).selectedItemId = R.id.nav_tab_channels
     }
 
     private fun stopSync() {
