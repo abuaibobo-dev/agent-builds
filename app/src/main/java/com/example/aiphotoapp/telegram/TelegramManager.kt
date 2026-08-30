@@ -98,7 +98,7 @@ class TelegramManager(
 
     fun getChat(chatId: Long): JSONObject = request("getChat", JSONObject().put("chat_id", chatId))
 
-    override fun historyPage(chatId: Long, fromMessageId: Long, limit: Int = 100): JSONObject = request(
+    override fun historyPage(chatId: Long, fromMessageId: Long, limit: Int): JSONObject = request(
         "getChatHistory",
         JSONObject()
             .put("chat_id", chatId)
@@ -108,7 +108,7 @@ class TelegramManager(
             .put("only_local", false),
     )
 
-    override fun copyMessages(sourceChatId: Long, targetChatId: Long, messageIds: List<Long>, removeCaption: Boolean = false): JSONObject = request(
+    override fun copyMessages(sourceChatId: Long, targetChatId: Long, messageIds: List<Long>, removeCaption: Boolean): JSONObject = request(
         "copyMessages",
         JSONObject()
             .put("chat_id", targetChatId)
