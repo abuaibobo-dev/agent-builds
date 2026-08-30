@@ -16,7 +16,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.room.Room
-import com.example.aiphotoapp.BuildConfig
 import com.example.aiphotoapp.data.CollectorDatabase
 import com.example.aiphotoapp.data.SyncRule
 import com.example.aiphotoapp.sync.SyncEngine
@@ -106,7 +105,8 @@ class CollectorActivity : AppCompatActivity() {
     }
 
     private fun showTab(index: Int) {
-        tvTitle.text = "${listOf("频道管理", "运行总览", "采集规则", "设置")[index]} · ${BuildConfig.VERSION_NAME}"
+        val vn = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
+        tvTitle.text = "${listOf("频道管理", "运行总览", "采集规则", "设置")[index]} · $vn"
         flContent.removeAllViews()
         val screenW = resources.displayMetrics.widthPixels
         val pad = max(16.dp, (screenW - 540.dp) / 2)
